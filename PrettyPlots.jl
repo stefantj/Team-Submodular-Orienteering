@@ -25,39 +25,51 @@ function initialize_plots()
 
 end
 
-function open_plot_conference(xname,yname,fignum)
-    fig = figure(fignum,figsize=(3,2));
-@pyimport seaborn
-    seaborn.set_style("whitegrid");
-    xlabel(xname,fontsize=7);
-    ylabel(yname,fontsize=7);
-#    legend([L"$$xname$",L"$\mathrm{Greedy}$",L"$\mathrm{Bounds}$"],loc="lower right");
+function plot_compare_naive_trial()
+    data = load("compare_naive.jld");
+    v_g = data["val_greed"];
+    v_n = data["val_naive"];
+    v_u = data["val_ub"];
+
+    @pyimport seaborn
+    initialize_plots();
+    fig = figure(2,figsize=(3,2));clf();
+    PyPlot.plot([],[],color="y");
+    PyPlot.plot([],[],color="g");
+    PyPlot.plot([],[],color="b");
+    seaborn.tsplot(v_g,color="g");
+    seaborn.tsplot(v_n,color="b");
+    seaborn.tsplot(v_u,color="o");
     fig[:subplots_adjust](bottom=0.2)
+    fig[:subplots_adjust](left=0.15)
+    ylabel(L"\mathrm{Number\ of\ nodes\ visited}");
+    xlabel(L"\mathrm{Team\ size}")
+
+    legend([L"\mathrm{Upper\ Bound}", L"\mathrm{GreedySurvivor}",L"\mathrm{Baseline}"],loc="lower right")
+    
+end
+
+function plot_opt_vs_heur()
+    data = load("opt_vs_heur.jld");
+    h_val = data["heur_val"];
+    h_ub  = data["heur_UB"];
+    h_lb  = data["heur_LB"];
+    opt   = data["opt_vals"];
+    K     = data["K"];
+
+    @pyimport seaborn
+    figure(3,figsize=(3,2)); clf();
+    PyPlot.plot(1:K, h_ub, linestyle=":",color=:green);
+    PyPlot.plot(1:6, opt, color=:blue);
+    PyPlot.plot(1:K, h_val, color=:green);
+#    PyPlot.plot(1:K, 28*ones(K), color=:black);
+    xlabel(L"\mathrm{Team\ size}");
+    ylabel(L"\mathrm{Expected\ number\ of\ nodes\ visited}");
+    legend([L"\mathrm{Upper\ bound}", L"\mathrm{Optimal}", L"\mathrm{Greedy\ Survivors}"],loc="lower right");
 end
 
 
-
-
-#end
-
-function compare_plots()
-#    initialize_plots();
-    x=linspace(0,2pi,100);
-    y=cos(x);
-    open_plot_conference(L"$\mathrm{Xvals}$",L"$\mathrm{Yvals}$", 1);
-    PyPlot.plot(x,y);
-
-@pyimport seaborn
-    seaborn.plotting_context("paper");
-    figure(2,figsize=(3,2))
-    PyPlot.plot(x,y)
-
-    seaborn.set_style("darkgrid");
-    figure(3,figsize=(3,2));
-    PyPlot.plot(x,y)
-end
-
-function plot_ts_data()
+function plot_perf_vs_pr()
 
     data = load("perf_vs_pr.jld");
     D = data["data"]

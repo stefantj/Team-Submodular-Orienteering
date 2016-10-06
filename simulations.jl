@@ -14,7 +14,6 @@ println(" Compare_naive: Runs comparison with naive baseline algorithm.");
 println(" perf_vs_pr:    Runs simulation to judge performance versus p_r");
 println(" opt_vs_heur:   Runs comparison with brute-forced optimal paths on hexagon problem");
 
-
 function compare_naive(num_iters)
     initialize_plots()
     # Generate varying problems
@@ -31,20 +30,14 @@ function compare_naive(num_iters)
     num_gK = size(kgvals,1)
     num_nK = size(knvals,1)
 
-    val_naive = zeros(num_nK)
-    val_greed = zeros(num_gK)
-    val_ub    = zeros(num_gK)
-    min_naive = zeros(num_nK)
-    min_greed = zeros(num_gK)
-    max_naive = zeros(num_nK)
-    max_greed = zeros(num_gK)
-    val2_naive = zeros(num_nK)
-    val2_greed = zeros(num_gK)
+    val_naive = zeros(num_iters,K)
+    val_greed = zeros(num_iters,K)
+    val_ub    = zeros(num_iters,K)
 
     figure(1); clf();
 
     for i=1:num_iters
-        psize=7
+        psize=4
         prob,unreach[i] = lattice_problem(psize,0.8)
 
         while(unreach[i] > 1)
@@ -56,83 +49,25 @@ function compare_naive(num_iters)
         println("Problem has $d skipped nodes");
         unreach[i] += d
 
-        greedy_trace = zeros(num_gK)
-        naive_trace  = zeros(num_nK)
         k_ind=1;
-        v_n = rand_pr_solution(prob,K)/(psize*psize-unreach[i])
-        println(size(v_n))
+        v_n = randomSurvivors(prob,K)
+        val_naive[i,:] = v_n';
+        v_g, vu = greedy_solve(prob,K) # somewhat suspicious of the upper bound. Need to check
+        val_greed[i,:] = v_g';
         for k=1:K
-            val_naive[k_ind] += v_n[k_ind]/num_iters
-            val2_naive[k_ind] += v_n[k_ind]^2/num_iters
-
-            if(v_n[k_ind] > max_naive[k_ind] || i==1)
-                max_naive[k_ind] = v_n[k_ind]
-            end
-            if(v_n[k_ind] < min_naive[k_ind] || i==1)
-                min_naive[k_ind] = v_n[k_ind]
-            end
-
-            naive_trace[k_ind]  = v_n[k_ind]
-            k_ind+=1
+                                # Trivial upper bound    computed
+            val_ub[i,k] = min( (psize*psize-unreach[i]), vu[k]+1);
         end
-        k_ind=1;
-        v_g, vu = greedy_solve(prob,K)
-        v_u = vu/(psize*psize-unreach[i])
-        v_g = v_g/ (psize*psize-unreach[i])
-        println(size(v_g))
-        for k=1:K
-            println("I:$i K=$k v_g=$v_g");
-            val_ub[k_ind] += vu[k]/num_iters
-            val_greed[k_ind] += v_g[k]/num_iters
-            val2_greed[k_ind] += v_g[k]^2/num_iters
-            if(v_g[k] > max_greed[k_ind] || i==1)
-                max_greed[k_ind] = v_g[k]
-            end
-            if(v_g[k] < min_greed[k_ind] || i==1)
-                min_greed[k_ind] = v_g[k]
-            end
-            greedy_trace[k_ind] = v_g[k]
-            k_ind+=1
-        end
-
-        println("Vu=",v_u)
 
         figure(1);
-        PyPlot.plot(knvals, naive_trace, color=:green, alpha=0.3)
-        PyPlot.plot(kgvals, greedy_trace, color=:blue, alpha=0.3)
+        PyPlot.plot(knvals, vec(v_n), color=:green, alpha=0.3)
+        PyPlot.plot(kgvals, vec(v_g), color=:blue, alpha=0.3)
         legend(["Naive solution", "Greedy algorithm"])
         xlabel("Team size")
         ylabel("Average number of nodes visited");
-        close(figure(2))
-        f=figure(2,figsize=(3,2));clf();
-        progress = (num_iters)/(i);
-
-        pvals = zeros(K);
-        kind=1
-        for k in kgvals
-            pvals[kind] = min(progress*val_ub[kind], 1.0)
-            kind+=1
-        end
-
-
-            PyPlot.plot(kvals, progress.*val_naive, color=:green, linewidth=1.5)
-            PyPlot.plot(kvals, progress.*val_greed, color=:blue, linewidth=1.5)
-            println("plotvals:", pvals)
-            legend([L"$\mathrm{Randomized\ solution}$", L"$\mathrm{Greedy\ algorithm}$"],fontsize=8,loc="lower right")
-        xlabel(L"$\mathrm{Team\ size}$",fontsize=8)
-        ylabel(L"$\mathrm{Fraction\ of\ nodes\ visited}$",fontsize=8);
-            PyPlot.fill_between(kvals, max_naive, min_naive, alpha=0.3, color=:green)
-            PyPlot.fill_between(kvals, max_greed, min_greed, alpha=0.3, color=:blue)
-        ylim([0,5.05]);
-        f[:subplots_adjust](bottom=0.2)
-        savefig("wip.png",dpi=720)
-        close(figure(3))
-        figure(3,figsize=(3,2)); clf();
-        PyPlot.plot( progress.*val_greed./pvals, color=:black,linewidth=1.5);
-        ylabel("Approximation ratio");
-        xlabel("Team size")
     end
 
+    save("compare_naive.jld", "val_naive",val_naive, "val_greed",val_greed, "val_ub", val_ub, "num_iters", num_iters);
     return val_naive,val_greed
 end
 
@@ -141,8 +76,6 @@ function perf_vs_pr(num_iters)
 
     K=5;
     psize=8;
-
-
 
     pr_vals = linspace(0.31,0.99,15);
     num_node_visits = zeros(size(pr_vals,1));
@@ -218,14 +151,14 @@ function opt_vs_heur()
 #    optvals = [4.53224872,8.06449744,11.59674616,13.661862728813,15.589474238806];
     optvals = [4.42183758,7.84367516,11.26551274,13.596587,15.3926175,17.1303];
 
-    println(optvals-opt_vals);
-    println(opt_vals)
+
+    save("opt_vs_heur.jld", "heur_val", heur_val, "heur_LB", heur_LB, "heur_UB", heur_UB, "opt_vals", opt_vals,"K",K);
+
 
     figure(123);clf()
     PyPlot.plot(1:K, heur_val, color=:green);
     PyPlot.plot(1:K, heur_LB, linestyle=":",color=:green);
     PyPlot.plot(1:K, heur_UB, linestyle=":",color=:green);
-#    lb = (heur_val-1)*0.71*0.71
     PyPlot.fill_between(1:K,heur_UB,heur_LB,alpha=0.3,color=:green); 
     PyPlot.plot(1:K, 28*ones(K), color=:black);
     PyPlot.plot(1:6, opt_vals, color=:blue);

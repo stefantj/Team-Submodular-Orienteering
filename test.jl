@@ -25,7 +25,7 @@ end
 
 function test_heur_big(num_iters)
 
-    prob, unreach, x, y = euclidean_problem(15,0.15);
+    prob, unreach, x, y = euclidean_problem(10,0.15);
     budget = 5.0;
     scores = rand(prob.num_nodes)
     heur_times = zeros(num_iters)

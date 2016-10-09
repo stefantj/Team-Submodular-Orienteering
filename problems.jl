@@ -300,7 +300,7 @@ function write_op_problem(xvals, yvals, scores, budget)
     open("ILS/TOPTW/autogen_100/r101.txt","w") do f
         # Write first two lines: 
         num_nodes = size(xvals,1);
-        write(f,"4 $(round(xvals[end],2)) $(round(yvals[end],2)) 0\n");  # Data about the final node
+        write(f,"$(num_nodes) $(round(xvals[end],2)) $(round(yvals[end],2)) 0\n");  # Data about the final node
         write(f,"0 200\n");                  # Pretty sure this line is unused
         write(f,"$(0) $(round(xvals[1],2)) $(round(yvals[1],2)) 0 $(round(scores[1],2)) 0 0 0 $(round(budget,2))\n")
 #        println("$(1) $(round(xvals[1],2)) $(round(yvals[1],2)) 0 $(round(scores[1],2)) 0 0 0 $(round(budget,2))\n")

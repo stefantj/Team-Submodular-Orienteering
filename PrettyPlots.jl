@@ -2,10 +2,11 @@
 using PyCall
 PyDict(pyimport("matplotlib")["rcParams"])["font.sans-serif"] = ["Helvetica"]
 using PyPlot
+@pyimport seaborn
 
 using JLD
 
-
+Pretty_Plot_Colors=[];
 function initialize_plots()
 #    PyPlot.svg(true)
     linewidth = 1.2 
@@ -20,36 +21,57 @@ function initialize_plots()
     PyPlot.rc("ytick", labelsize=8)
 #    PyPlot.rc("ytick.major", width=linewidth)
     PyPlot.rc("legend", fontsize=8)
-
     # TODO: Add common colorscheme here.
+    Pretty_Plot_Colors = seaborn.color_palette();
+end
+
+function make_all_plots()
+    plot_compare_naive_trial();
+    plot_opt_vs_heur();
+    plot_perf_vs_pr();
 
 end
 
+# single place where we can set the colors
+function get_colors()
+    return seaborn.color_palette();
+end
+
+initialize_plots();
+
 function plot_compare_naive_trial()
+    Pretty_Plot_Colors = get_colors();
     data = load("compare_naive.jld");
     v_g = data["val_greed"];
     v_n = data["val_naive"];
     v_u = data["val_ub"];
 
-    @pyimport seaborn
+    println(size(v_g))
+
+    num_agents = 5
+
+    xlabels = [L"1","",L"2","",L"3","",L"4","",L"5"];#,L"6",L"7",L"8",L"9",L"10"];
+
     initialize_plots();
-    fig = figure(2,figsize=(3,2));clf();
-    PyPlot.plot([],[],color="y");
-    PyPlot.plot([],[],color="g");
-    PyPlot.plot([],[],color="b");
-    seaborn.tsplot(v_g,color="g");
-    seaborn.tsplot(v_n,color="b");
-    seaborn.tsplot(v_u,color="o");
+    fig = figure(11,figsize=(3,2));clf();
+    PyPlot.plot([],[],color=Pretty_Plot_Colors[1],linestyle=":");
+    PyPlot.plot([],[],color=Pretty_Plot_Colors[3]);
+    PyPlot.plot([],[],color=Pretty_Plot_Colors[5]);
+    seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_u,color=Pretty_Plot_Colors[1],linestyle=":");
+    seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_g,color=Pretty_Plot_Colors[3]);
+    ax=seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_n,color=Pretty_Plot_Colors[5]);
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
+    ax[:set](xticklabels=xlabels)
     ylabel(L"\mathrm{Number\ of\ nodes\ visited}");
     xlabel(L"\mathrm{Team\ size}")
 
-    legend([L"\mathrm{Upper\ Bound}", L"\mathrm{GreedySurvivor}",L"\mathrm{Baseline}"],loc="lower right")
+    legend([L"\mathrm{Upper\ Bound}", L"\mathrm{Greedy Survivors}",L"\mathrm{Baseline}"],loc="lower right")
     
 end
 
 function plot_opt_vs_heur()
+    colors = get_colors();
     data = load("opt_vs_heur.jld");
     h_val = data["heur_val"];
     h_ub  = data["heur_UB"];
@@ -57,25 +79,26 @@ function plot_opt_vs_heur()
     opt   = data["opt_vals"];
     K     = data["K"];
 
-    @pyimport seaborn
-    figure(3,figsize=(3,2)); clf();
-    PyPlot.plot(1:K, h_ub, linestyle=":",color=:green);
-    PyPlot.plot(1:6, opt, color=:blue);
-    PyPlot.plot(1:K, h_val, color=:green);
+    fig=figure(12,figsize=(3,2)); clf();
+    PyPlot.plot(1:K, h_ub, linestyle=":",color=colors[1]);
+    PyPlot.plot(1:6, opt, color=colors[2]);
+    PyPlot.plot(1:K, h_val, color=colors[3]);
 #    PyPlot.plot(1:K, 28*ones(K), color=:black);
     xlabel(L"\mathrm{Team\ size}");
     ylabel(L"\mathrm{Expected\ number\ of\ nodes\ visited}");
     legend([L"\mathrm{Upper\ bound}", L"\mathrm{Optimal}", L"\mathrm{Greedy\ Survivors}"],loc="lower right");
+    fig[:subplots_adjust](bottom=0.2)
+    fig[:subplots_adjust](left=0.15)
 end
 
 
 function plot_perf_vs_pr()
-
+    C = get_colors();
     data = load("perf_vs_pr.jld");
     D = data["data"]
     U = data["ub_data"];
     pr_vals = linspace(0.31,0.99,15)
-    xlabels = [L".3",L".4",L".5",L".6",L".7",L".8",L".9"];
+#    xlabels = [L".3",L".4",L".5",L".6",L".7",L".8",L".9"];
 
 
     # Loosenes of bound:
@@ -110,58 +133,57 @@ function plot_perf_vs_pr()
         end
     end
 
-    @pyimport seaborn
-    initialize_plots();
     seaborn.plotting_context("paper");
     seaborn.set_style("white");
-    C = seaborn.color_palette("BuGn_d",2)
-#    C = seaborn.color_palette("BuGn_d",size(D,3))
-    fig=figure(1,figsize=(3,2));clf();
+    fig=figure(13,figsize=(3,2));clf();
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
     fig[:subplots_adjust](wspace=0.3)
     
     x = U[:,:,1];
-    plot(pr_vals, mean(x,2),color=C[1]);
+    plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
     x = D[:,:,1];
     a=plot(pr_vals, mean(x,2),color=C[2]);
     x = Lb[:,:,1];
-    plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
+    plot(pr_vals, mean(x,2),color=C[4],linestyle=":");
     ylim([0,70]);
     title(L"\mathrm{Single\ agent}");
     ylabel(L"\mathrm{Number\ of\ visited\ nodes}");
     xlabel(L"$ p_s$")
-    legend(["Upper bound", "Average", "Lower Bound"],loc="lower right");
+    legend([L"\mathrm{Upper\ bound}", L"\mathrm{Average}", L"\mathrm{Lower\ Bound}"],loc="lower right");
 
-    fig=figure(2,figsize=(3,2));clf();
+    fig=figure(14,figsize=(3,2));clf();
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
     fig[:subplots_adjust](wspace=0.3)
     x = U[:,:,end];
-    plot(pr_vals, mean(x,2),color=C[1]);
+    plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
     x = D[:,:,end];
     a=plot(pr_vals, mean(x,2),color=C[2]);
     x = Lb[:,:,end];
-    plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
+    plot(pr_vals, mean(x,2),color=C[4],linestyle=":");
     ylim([0,70]);
     title(L"\mathrm{5\ agents}");
-    legend(["Upper bound", "Average", "Lower Bound"],loc="lower right");
+    legend([L"\mathrm{Upper\ bound}", L"\mathrm{Average}", L"\mathrm{Lower\ Bound}"],loc="lower right");
     ylim([0,70]);
     xlabel(L"$ p_s$")
 
-    fig=figure(3,figsize=(3,2));clf();
+    fig=figure(15,figsize=(3,2));clf();
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
-    C = seaborn.color_palette("BuGn_d",size(D,3))
-    for k=1:size(D,3)
+
+    plot([],[],color=C[5]);
+    plot([],[],color=C[3]);
+    plot([],[],color=C[1]);
+
+    for k=size(D,3):-2:1
         l = Lo[:,:,k]'
-        a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[size(D,3)-k+1])
+        a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k])
     end
-    a[:set](xticklabels=xlabels)
     ylim([0,1.1]);
-#    xlim([0.3,]);
     ylabel(L"\mathrm{Fraction\ of\ Upper\ Bound}");
     xlabel(L"\mathrm{Return\ Probability\ Constraint}")
+    legend([L"\mathrm{5\ agents}", L"\mathrm{3\ agents}", L"\mathrm{1\ agent}"],loc="lower right")
 end
 
 
@@ -198,7 +220,6 @@ function plot_traffic_data()
         days_stan=[days_tot; days[pt]*ones(t_stan[pt])];
         t_dep_stan=[t_dep_tot; t_dep[pt]*ones(t_stan[pt])]
     end
-    @pyimport seaborn
     seaborn.jointplot(days_tot,t_dep_tot,kind="kde",color="#4CB391")
     seaborn.jointplot(days_exit,t_dep_exit,kind="kde")
     seaborn.jointplot(days_stan,t_dep_stan,kind="hex",color="r")

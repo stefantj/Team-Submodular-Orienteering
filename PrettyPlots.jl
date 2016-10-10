@@ -77,13 +77,13 @@ function plot_opt_vs_heur()
     h_ub  = data["heur_UB"];
     h_lb  = data["heur_LB"];
     opt   = data["opt_vals"];
+    optK  = data["k_optvals"];
     K     = data["K"];
 
     fig=figure(12,figsize=(3,2)); clf();
     PyPlot.plot(1:K, h_ub, linestyle=":",color=colors[1]);
-    PyPlot.plot(1:6, opt, color=colors[2]);
+    PyPlot.plot(optK, opt, color=colors[2]);
     PyPlot.plot(1:K, h_val, color=colors[3]);
-#    PyPlot.plot(1:K, 28*ones(K), color=:black);
     xlabel(L"\mathrm{Team\ size}");
     ylabel(L"\mathrm{Expected\ number\ of\ nodes\ visited}");
     legend([L"\mathrm{Upper\ bound}", L"\mathrm{Optimal}", L"\mathrm{Greedy\ Survivors}"],loc="lower right");

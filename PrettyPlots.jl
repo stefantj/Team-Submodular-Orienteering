@@ -41,7 +41,7 @@ initialize_plots();
 
 function plot_compare_naive_trial()
     Pretty_Plot_Colors = get_colors();
-    data = load("compare_naive.jld");
+    data = load("sim_data/compare_naive.jld");
     v_g = data["val_greed"];
     v_n = data["val_naive"];
     v_u = data["val_ub"];
@@ -59,7 +59,7 @@ function plot_compare_naive_trial()
     PyPlot.plot([],[],color=Pretty_Plot_Colors[5]);
     seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_u,color=Pretty_Plot_Colors[1],linestyle=":");
     seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_g,color=Pretty_Plot_Colors[3]);
-    ax=seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_n,color=Pretty_Plot_Colors[5]);
+    ax=seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_n,color=Pretty_Plot_Colors[6]);
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
     ax[:set](xticklabels=xlabels)
@@ -72,7 +72,7 @@ end
 
 function plot_opt_vs_heur()
     colors = get_colors();
-    data = load("opt_vs_heur.jld");
+    data = load("sim_data/opt_vs_heur.jld");
     h_val = data["heur_val"];
     h_ub  = data["heur_UB"];
     h_lb  = data["heur_LB"];
@@ -94,7 +94,7 @@ end
 
 function plot_perf_vs_pr()
     C = get_colors();
-    data = load("perf_vs_pr.jld");
+    data = load("sim_data/perf_vs_pr.jld");
     D = data["data"]
     U = data["ub_data"];
     pr_vals = linspace(0.31,0.99,15)
@@ -112,7 +112,19 @@ function plot_perf_vs_pr()
             n_rat = 0;
             vals = Float64[];
             for i = 1:size(D,2)
-                if(U[p,i,k] != 0)
+                # Use larger teams as upper bound: 
+                for dk=k+1:size(D,3)
+                    ub = D[p,i,dk]/ ( 1 - e^(-dk*pr_vals[p]/k));
+                    if(ub > 0)
+                        if(U[p,i,k] == 0)
+                            U[p,i,k] = ub;
+                        else
+                            U[p,i,k] = min(ub, U[p,i,k])
+                        end
+                    end
+                end
+
+                if(U[p,i,k] != 0 && D[p,i,k] != 0) 
                     push!(vals, D[p,i,k]);
                     Lo[p,i,k] = D[p,i,k]/U[p,i,k]
                     avg_rat+=Lo[p,i,k];

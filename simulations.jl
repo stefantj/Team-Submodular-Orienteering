@@ -105,7 +105,7 @@ function perf_vs_pr(num_iters)
             v_g += d;
             for k=1:K
                 data[pr_ind, i,k] = v_g[k];
-                ub_data[pr_ind,i,k] = min(psize*psize-unreach,v_g[k]*e/(e-1)/pr)
+                ub_data[pr_ind,i,k] = min(psize*psize-unreach,v_g[k]/( 1- e^(-pr)))
             end
             v_g =v_g[end]+d;
             if(i==1)
@@ -123,7 +123,7 @@ function perf_vs_pr(num_iters)
 
         PyPlot.plot(pr_vals, num_node_visits,color=:blue);
         PyPlot.fill_between(pr_vals, max_visits, min_visits, color=:blue, alpha=0.3);
-        approx = e./((e-1)*pr_vals)
+        approx = 1./( 1 - e.^(-pr_vals) )
         PyPlot.plot(pr_vals, min(num_node_visits.*approx, psize*psize), color=:green);
         println(num_node_visits);
     end

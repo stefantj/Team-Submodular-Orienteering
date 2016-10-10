@@ -80,9 +80,13 @@ function plot_opt_vs_heur()
     optK  = data["k_optvals"];
     K     = data["K"];
 
+    for k=1:size(h_ub,1)
+        h_ub[k] = min(h_ub[k], 19);
+    end
+
     fig=figure(12,figsize=(3,2)); clf();
     PyPlot.plot(1:K, h_ub, linestyle=":",color=colors[1]);
-    PyPlot.plot(optK, opt, color=colors[2]);
+    PyPlot.plot(optK, opt, linestyle="--",color=colors[2]);
     PyPlot.plot(1:K, h_val, color=colors[3]);
     xlabel(L"\mathrm{Team\ size}");
     ylabel(L"\mathrm{Expected\ number\ of\ nodes\ visited}");
@@ -184,18 +188,20 @@ function plot_perf_vs_pr()
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
 
-    plot([],[],color=C[5]);
-    plot([],[],color=C[3]);
-    plot([],[],color=C[1]);
-
+    ls = ["-","--","-."];
+    k_ind = 0;
     for k=size(D,3):-2:1
+        k_ind += 1;
         l = Lo[:,:,k]'
-        a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k])
+        plot([],[],color=C[k+1],linestyle=ls[k_ind]);
+        a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k+1],linestyle=ls[k_ind])
     end
+    plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
+
     ylim([0,1.1]);
     ylabel(L"\mathrm{Fraction\ of\ Upper\ Bound}");
     xlabel(L"\mathrm{Return\ Probability\ Constraint}")
-    legend([L"\mathrm{5\ agents}", L"\mathrm{3\ agents}", L"\mathrm{1\ agent}"],loc="lower right")
+    legend([L"\mathrm{5\ agents}", L"\mathrm{3\ agents}", L"\mathrm{1\ agent}",L"\mathrm{Guarantee}"],loc="lower right")
 end
 
 

@@ -491,7 +491,7 @@ end
 # Run the dual problem simulation
 
 function simulate_dual(num_iters)
-    psize = 7;
+    psize = 6;
     pr_steps = 30;
     Kmax = 50;
     pr_min = .1
@@ -524,8 +524,6 @@ function simulate_dual(num_iters)
                 times = [];
             end
 
-            println("Visit probs: $visit_probs\nk=$k");
-
             if(k > 0)
                 # check if optimal:
                 if((1-pr)*k < optval)
@@ -538,24 +536,6 @@ function simulate_dual(num_iters)
                 end
             end
             println("Max time: ", maxtime);
-#            figure(1,figsize=(3,2));clf();
-#            imshow(fliplr(feas_grid)', cmap="RdYlGn", interpolation="none",extent=[pr_min*100, pr_max*100, 1, Kmax]);
-#            xlabel("Survival probability (percent)");
-#            ylabel("Team size");
-
-            # Add some equicost lines: 
-#            opt_equi = optval./(1-pr_vals)
-#            PyPlot.plot(100*pr_vals,opt_equi,color=:white,linestyle=":");
-#            scatter(100*opt_pr, opt_k, marker="o", color=:white)
-#            L = legend(["Equi-cost curve", "Optimal point"], loc="upper left")
-#            t = L[:get_texts]();
-#            t[1][:set_color]("white");
-#            t[2][:set_color]("white");
-
-#            grid("off");
-#            xlim([100*pr_min, 100*pr_max]);
-#            ylim([1,Kmax]);
-
             save("dual_feasibility.jld", "feas_grid", feas_grid, "visit_probs", visit_probs, "maxtime", maxtime, "optval",optval,"opt_k",opt_k,"opt_pr",opt_pr, "pr_vals",pr_vals,"Kmax",Kmax);
             plot_dual_data();            
         end

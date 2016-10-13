@@ -182,10 +182,6 @@ function dual_solve(prob, num_agents)
         slack = zeros(num_nodes)
         slack = prob.prob_constr - (1.0-exp(unvisited_prob));
         rewards = prob.alphas.*max(slack,0.0)
-        println("Visit constr: ", prob.prob_constr);
-        println("Visit probs: ",1-exp(unvisited_prob));
-        println("Slack: ", slack);
-        println("Rewards: $rewards");
 
         # Check if we've already solved the problem:
         if(maximum(rewards).< 0.0001)

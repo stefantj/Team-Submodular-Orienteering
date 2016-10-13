@@ -204,6 +204,7 @@ function test_solver_scaling(range)
     end
 end
 
+
 function test_solvers(num_nodes)
     # generate random problem
     prob,unreach = euclidean_problem(num_nodes, 0.15); 
@@ -222,7 +223,7 @@ function test_solvers(num_nodes)
         # Solve with 2011 approach
         if(use_2011)
             tic();
-            path_1 = solve_OP(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
+            path_1 = solve_OP_general(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
             t1 = toq();
             println("Time: $t1. Path 1 has reward ", sum(rewards[path_1]), " and nodes: \n", path_1)
             data_nom[iter] = t1;

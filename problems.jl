@@ -15,6 +15,9 @@ type pr_problem
     p_r::Float64
     G # abstract graph
     edge_probs::Vector{Float64}
+    is_euclidean::Bool 
+    x_points::Vector{Float64}
+    y_points::Vector{Float64}
 end
 
 
@@ -72,6 +75,10 @@ end
 function lattice_problem(num_nodes_per_side, p_r)
     num_nodes = (num_nodes_per_side^2 + 1)
     surv_probs = 0.0001*ones(num_nodes, num_nodes)
+
+    is_euclidean = false;
+    xpts = zeros(num_nodes);
+    ypts = zeros(num_nodes);
 
     prob_constr = zeros(num_nodes);
 
@@ -175,7 +182,7 @@ function lattice_problem(num_nodes_per_side, p_r)
 #    Graphs.plot(G)
 
     println("Problem has $unreachable unreachable nodes");
-    prob = pr_problem(num_nodes, prob_constr, surv_probs, alpha, lbs, p_r, G, edge_weights)
+    prob = pr_problem(num_nodes, prob_constr, surv_probs, alpha, lbs, p_r, G, edge_weights,is_euclidean,xpts,ypts)
     return prob, unreachable
 end
 
@@ -183,6 +190,7 @@ function euclidean_problem(num_nodes_per_side, p_r)
     num_nodes = (num_nodes_per_side^2 + 1)
     surv_probs = 0.0001*ones(num_nodes, num_nodes)
 
+    is_euclidean=true;
     locations = linspace(0,1,num_nodes_per_side);
 
     prob_constr = zeros(num_nodes);
@@ -289,8 +297,8 @@ function euclidean_problem(num_nodes_per_side, p_r)
     
 #    Graphs.plot(G)
 
-    prob = pr_problem(num_nodes, prob_constr, surv_probs, alpha, lbs, p_r, G, edge_weights)
-    return prob, unreachable, xvals,yvals
+    prob = pr_problem(num_nodes, prob_constr, surv_probs, alpha, lbs, p_r, G, edge_weights,is_euclidean, xvals,yvals)
+    return prob, unreachable
 end
 
 # Writes to output for heuristic solver

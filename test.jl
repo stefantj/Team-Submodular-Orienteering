@@ -1,3 +1,4 @@
+include("simulations.jl");
 include("solvers.jl");
 include("problems.jl");
 include("PrettyPlots.jl");

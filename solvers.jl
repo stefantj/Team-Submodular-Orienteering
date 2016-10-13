@@ -1,3 +1,4 @@
+include("flags.jl");
 include("problems.jl") # Contains problem definitions
 
 # Functions in this file:

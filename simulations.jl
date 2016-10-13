@@ -1,5 +1,13 @@
 # Contains high level simulation routines
 
+include("flags.jl");
+println("FLAG_USE_GUROBI: $FLAG_USE_GUROBI");
+println("FLAG_USE_SEABORN: $FLAG_USE_SEABORN");
+
+
+
+
+
 # File contains solution libraries
 include("solvers.jl");
 
@@ -14,6 +22,7 @@ println(" Compare_naive: Runs comparison with naive baseline algorithm.");
 println(" perf_vs_pr:    Runs simulation to judge performance versus p_r");
 println(" opt_vs_heur:   Runs comparison with brute-forced optimal paths on hexagon problem");
 
+
 function compare_naive(num_iters)
     initialize_plots()
     # Generate varying problems
@@ -22,7 +31,7 @@ function compare_naive(num_iters)
     # Number of infeasible nodes
     unreach = zeros(num_iters)
     # Team size
-    K=5;
+    K=25;
     kvals = collect(1:K)
     kgvals=kvals
     knvals=kvals
@@ -37,7 +46,7 @@ function compare_naive(num_iters)
     figure(1); clf();
 
     for i=1:num_iters
-        psize=4
+        psize=8
         prob,unreach[i] = lattice_problem(psize,0.8)
 
         while(unreach[i] > 1)
@@ -45,14 +54,17 @@ function compare_naive(num_iters)
         end
 
         # Account for solutions the OP will just miss.
-        d=check_feasibility_OP(prob);
-        println("Problem has $d skipped nodes");
-        unreach[i] += d
+#        d=check_feasibility_OP(prob);
+#        println("Problem has $d skipped nodes");
+#        unreach[i] += d
 
         k_ind=1;
         v_n = randomSurvivors(prob,K)
-        val_naive[i,:] = v_n';
         v_g, vu = greedy_solve(prob,K) # somewhat suspicious of the upper bound. Need to check
+        if(size(v_g,1)!=K)
+            continue
+        end
+        val_naive[i,:] = v_n';
         val_greed[i,:] = v_g';
         for k=1:K
                                 # Trivial upper bound    computed
@@ -65,69 +77,84 @@ function compare_naive(num_iters)
         legend(["Naive solution", "Greedy algorithm"])
         xlabel("Team size")
         ylabel("Average number of nodes visited");
+        save("compare_naive.jld", "val_naive",val_naive, "val_greed",val_greed, "val_ub", val_ub, "num_iters", num_iters);
     end
 
-    save("compare_naive.jld", "val_naive",val_naive, "val_greed",val_greed, "val_ub", val_ub, "num_iters", num_iters);
     return val_naive,val_greed
 end
 
 function perf_vs_pr(num_iters)
     initialize_plots();
 
-    K=5;
+    K=10;
     psize=8;
 
-    pr_vals = linspace(0.31,0.99,15);
+    pr_vals = linspace(0.31,0.99,10);
     num_node_visits = zeros(size(pr_vals,1));
-    max_visits = zeros(size(pr_vals,1))
-    min_visits = zeros(size(pr_vals,1));
     figure(1); clf();
 
     data = zeros(size(pr_vals,1), num_iters,K);
     ub_data = zeros(size(pr_vals,1),num_iters,K);
 
-    for i=1:num_iters
+    loop_times = zeros(size(pr_vals,1),num_iters, K);
+    loop_ind = 0;
+
+    i = 0;
+    while(i < num_iters)
+        if(i < 0)
+            i=0
+        end
+        i+=1;
         println("i=$i:");
         prob,unreach = lattice_problem(psize,0.01);
         pr_ind = 0;
         for pr in pr_vals
+            
             print(" pr = $pr: ");
             pr_ind += 1;
             unreach = change_lattice_pr(prob, pr);
-            d=check_feasibility_OP(prob);
-            println("Problem has $d skipped nodes");
-            v_g, vu = greedy_solve(prob,K)
+#            d=check_feasibility_OP(prob);
+#            println("Problem has $d skipped nodes");
+            v_g, vu, v_time = greedy_solve(prob,K)
             if(v_g[end] != v_g[end])
-                println("retrying this problem")
                 i-=1;
+                println("retrying this problem:")
                 break;
             end
-            v_g += d;
+
+            loop_times[pr_ind, i,:] = vec(v_time)';
+
+#            v_g += d;
             for k=1:K
                 data[pr_ind, i,k] = v_g[k];
                 ub_data[pr_ind,i,k] = min(psize*psize-unreach,v_g[k]/( 1- e^(-pr)))
             end
-            v_g =v_g[end]+d;
-            if(i==1)
-                max_visits[pr_ind] = v_g;
-                min_visits[pr_ind] = v_g;
-            end
-            if(max_visits[pr_ind] < v_g)
-                max_visits[pr_ind] = v_g
-            end
-            if(min_visits[pr_ind] > v_g)
-                min_visits[pr_ind] = v_g
-            end
-            num_node_visits[pr_ind] = v_g/i + num_node_visits[pr_ind]*(i-1)/i;
+#            v_g =v_g[end]+d;
+        end
+        save("perf_vs_pr.jld","data",data,"ub_data",ub_data,"pr",collect(pr_vals),"num_iters",i, "times", loop_times);
+        if(i > 1)
+            plot_perf_vs_pr();
         end
 
-        PyPlot.plot(pr_vals, num_node_visits,color=:blue);
-        PyPlot.fill_between(pr_vals, max_visits, min_visits, color=:blue, alpha=0.3);
-        approx = 1./( 1 - e.^(-pr_vals) )
-        PyPlot.plot(pr_vals, min(num_node_visits.*approx, psize*psize), color=:green);
-        println(num_node_visits);
+        if(i >= 1)
+# Pretty slow plots:
+            figure(2); clf();
+            for k=1:min(9,K)
+                subplot(3,3,k);
+                seaborn.swarmplot(vec(data[k,1:i,5]));
+                title("pr=$(pr_vals[k])"); 
+                xlim([0,psize*psize+1])
+            end
+
+#            figure(3); clf();
+#            for k=1:min(9,K)
+#                subplot(3,3,k);
+#                seaborn.swarmplot(vec(loop_times[:,:,k]));
+#                title("Computation time for agent $k"); 
+#            end
+
+        end
     end
-    save("perf_vs_pr.jld","data",data,"ub_data",ub_data,"pr",collect(pr_vals),"num_iters",num_iters);
     return data
 end
 
@@ -152,10 +179,6 @@ function opt_vs_heur()
     opt_vals[8] = hex_problem(12,true);
     opt_vals[9] = hex_problem(18,true);
     opt_vals[10] = hex_problem(24,true);
-
-    # These are precomputed values
-    optvals = [4.42183758,7.84367516,11.26551274,13.596587,15.3926175,17.1303, 17.6094333];
-
 
     save("opt_vs_heur.jld", "heur_val", heur_val, "heur_LB", heur_LB, "heur_UB", heur_UB, "opt_vals", opt_vals,"K",K,"k_optvals", k_optvals);
 
@@ -464,138 +487,5 @@ paths2 = [3 3;
         return sum(reward_actual)
     end
 end
-
-
-function test_solvers(num_nodes)
-    # generate random problem
-    prob,unreach = euclidean_problem(num_nodes, 0.15); 
-
-    use_2011 =  true;
-    use_nodes = true;
-    use_edges = true;    
-
-
-    num_iters = 1;
-    data_nom   = zeros(num_iters);
-    data_nodes = zeros(num_iters);
-    data_edges = zeros(num_iters);
-    for iter = 1:num_iters
-        rewards = rand(prob.num_nodes);
-        # Solve with 2011 approach
-        if(use_2011)
-            tic();
-            path_1 = solve_OP(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
-            t1 = toq();
-            println("Time: $t1. Path 1 has reward ", sum(rewards[path_1]), " and nodes: \n", path_1)
-            data_nom[iter] = t1;
-        end
-
-        # Solve with node based approach
-        if(use_nodes)
-            tic();
-            path_2 = solve_OP_nodes(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
-            t2=toq();
-            println("Time: $t2. Path 2 has reward ", sum(rewards[path_2]), " and nodes: \n", path_2)
-            data_nodes[iter] = t2;
-        end
-
-        # solve with edge based approach
-        if(use_edges)
-            tic();
-            path_3 = solve_OP_edges(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
-            t3=toq();
-            println("Time: $t3. Path 3 has reward ", sum(rewards[path_3]), " and nodes: \n", path_3)
-            data_edges[iter] = t3;
-        end
-
-        figure(4);clf();
-        if(iter > 1)
-            if(use_2011)
-                seaborn.distplot(data_nom[1:iter]);        
-            end
-            if(use_nodes)
-                seaborn.distplot(data_nodes[1:iter]);        
-            end
-            if(use_edges)
-                seaborn.distplot(data_edges[1:iter]);        
-            end
-        end
-    end
-end
-
-function test_solver_scaling(range)
-
-    num_iters = 10;
-    data_nom   = zeros(num_iters,size(range,1));
-    data_nodes = zeros(num_iters,size(range,1));
-    data_edges = zeros(num_iters,size(range,1));
-    index=0;
-    maxtime = 300; 
-    for num_nodes in range
-        index+=1;
-        prob, unreach = euclidean_problem(num_nodes, 0.15);
-        use_2011 =  false;
-        use_nodes = false;
-        use_edges = true;    
-
-        for iter = 1:num_iters
-            rewards = rand(prob.num_nodes);
-            # Solve with 2011 approach
-            if(use_2011)
-                tic();
-                path_1 = solve_OP(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
-                t1 = toq();
-                println("Time: $t1. Path 1 has reward ", sum(rewards[path_1]), " and nodes: \n", path_1)
-                data_nom[iter,index] = t1;
-            end
-
-            # Solve with node based approach
-            if(use_nodes)
-                tic();
-                path_2 = solve_OP_nodes(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
-                t2=toq();
-                println("Time: $t2. Path 2 has reward ", sum(rewards[path_2]), " and nodes: \n", path_2)
-                data_nodes[iter,index] = t2;
-            end
-
-            # solve with edge based approach
-            if(use_edges)
-                tic();
-                path_3 = solve_OP_edges(rewards, (prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
-                t3=toq();
-                println("Time: $t3. Path 3 has reward ", sum(rewards[path_3]), " and nodes: \n", path_3)
-                data_edges[iter,index] = t3;
-            end
-
-            figure(4);clf();
-            if(iter > 1)
-                if(use_2011)
-                    seaborn.distplot(data_nom[1:iter,index]);        
-                end
-                if(use_nodes)
-                    seaborn.distplot(data_nodes[1:iter,index]);        
-                end
-                if(use_edges)
-                    seaborn.distplot(data_edges[1:iter,index]);        
-                end
-            end
-        end
-        figure(5); clf();
-        C = get_colors();
-        if(use_2011)
-            seaborn.tsplot(time=range.^2, data_nom, color=C[3]);
-        end
-        if(use_nodes)
-            seaborn.tsplot(time=range.^2, data_nodes, color=C[2]);
-        end
-        if(use_edges)
-            seaborn.tsplot(time=range.^2, data_edges, color=C[1]);
-        end
-        PyPlot.plot(range.^2, maxtime*ones(range), color=:black);
-        xlabel("Problem size"); ylabel("Solution time (s)")
-        save("test_solver.jld", "problem_size", range.^2, "data_nom", data_nom, "data_nodes", data_nodes, "data_edges", data_edges, "maxtime", maxtime);
-    end
-end
-
 
 

@@ -1,8 +1,13 @@
-#module PrettyPlots
+include("flags.jl");
+
 using PyCall
 PyDict(pyimport("matplotlib")["rcParams"])["font.sans-serif"] = ["Helvetica"]
 using PyPlot
-@pyimport seaborn
+if(FLAG_USE_SEABORN)
+	@pyimport seaborn
+else
+    warn("Seaborn disabled: some plotting routines won't work well");
+end
 
 using JLD
 
@@ -22,7 +27,7 @@ function initialize_plots()
 #    PyPlot.rc("ytick.major", width=linewidth)
     PyPlot.rc("legend", fontsize=8)
     # TODO: Add common colorscheme here.
-    Pretty_Plot_Colors = seaborn.color_palette();
+    Pretty_Plot_Colors = get_colors();
 end
 
 function make_all_plots()
@@ -34,7 +39,11 @@ end
 
 # single place where we can set the colors
 function get_colors()
-    return seaborn.color_palette();
+    if(FLAG_USE_SEABORN) 
+        return seaborn.color_palette();
+    else
+        return [:blue,:green,:yellow,:orange,:red,:purple,:gray]
+    end
 end
 
 initialize_plots();
@@ -177,7 +186,9 @@ function plot_perf_vs_pr()
     for p=1:size(D,1)
         for k=1:size(D,3)
             ratios = vec(D[p,good_runs,k]./U[p,good_runs,k]);
+if(FLAG_USE_SEABORN)
             seaborn.distplot(ratios)
+end
             mean_vals[p,k] = mean( ratios)
             std_vals[p,k]  = sqrt(var(ratios));
             ub_vals[p,k] = maximum(ratios); # Alternately, use confidence interval
@@ -186,8 +197,10 @@ function plot_perf_vs_pr()
     end
 
 
+if(FLAG_USE_SEABORN)
     seaborn.plotting_context("paper");
     seaborn.set_style("white");
+end
     fig=figure(13,figsize=(3,2));#clf();
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
@@ -232,7 +245,9 @@ function plot_perf_vs_pr()
         k_ind += 1;
         l = Lo[:,:,k]'
         PyPlot.plot([],[],color=C[k+1],linestyle=ls[k_ind]);
+if(FLAG_USE_SEABORN)
         a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k+1],linestyle=ls[k_ind])
+end
     end
     PyPlot.plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
 
@@ -252,7 +267,9 @@ function plot_perf_vs_pr()
         k_ind += 1;
         l = Lo[:,good_runs,k]'
         PyPlot.plot([],[],color=C[k+1],linestyle=ls[k_ind]);
+if(FLAG_USE_SEABORN)
         a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k+1],linestyle=ls[k_ind])
+end
     end
     PyPlot.plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
 

@@ -1,6 +1,8 @@
 # Contains high level simulation routines
 
-global FLAG_USE_GUROBI = true;
+include("flags.jl");
+println("FLAG_USE_GUROBI: $FLAG_USE_GUROBI");
+println("FLAG_USE_SEABORN: $FLAG_USE_SEABORN");
 
 
 

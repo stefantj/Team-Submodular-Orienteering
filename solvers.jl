@@ -7,21 +7,25 @@ include("problems.jl") # Contains problem definitions
 # solve_OP(values,distances,B,n_s,n_t)    Solves the orienteering problem exactly by casting as a MIP. Timelimit 100s
 
 
-
-
 if(FLAG_USE_GUROBI)
     # File contains Gurobi based solvers:
     include("gurobi_solvers.jl");
-    function solve_OP(values,distances,B,n_s,n_t)
+    function solve_OP(values,prob,B,n_s,n_t)
         # Choose preferred method here: 
-        return solve_OP_general(values,distances,B,n_s,n_t);
-#        return solve_OP_edges(values, distances, B, n_s, n_t)
-#        return solve_OP_nodes(values, distances, B, n_s, n_t)
+        if(prob.is_euclidean)
+            return solve_OP_edges(values, -log(prob.surv_probs), B, n_s, n_t)
+        else
+            return solve_OP_general(values,-log(prob.surv_probs),B,n_s,n_t);
+        end
     end    
 else
-    function solve_OP(values, distances, B, n_s, n_t)
-        warn("Heuristic not equipped to take in distances only - need to reimplement interface");
-        return solve_heuristic_op()
+    function solve_OP(values, prob, B, n_s, n_t)
+        if(prob.is_euclidean)
+            return solve_heuristic_op(values, prob.x_points,prob.y_points, B, n_s,n_t);
+        else
+            warn("Heuristic not equipped for non-euclidean problems. Interface needs to be updated");
+            return [];
+        end
     end
 end
 
@@ -141,7 +145,7 @@ function greedy_solve(prob, num_agents)
         # Form reward vector:
         rewards = prob.alphas.*exp(unvisited_prob);
         # Solve OP
-        path = solve_OP(rewards, -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes)
+        path = solve_OP(rewards, prob, -log(prob.p_r), 1, prob.num_nodes)
         times[agent] += toq();
         if(isempty(path))
             println("Solver failed.");

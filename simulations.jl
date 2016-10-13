@@ -391,7 +391,11 @@ paths2 = [3 3;
         end
         path = []
         if(!p_opt)
-            path = solve_OP( rewards, -log(surv_probs), -log(p_r), 3, num_nodes)
+            if(FLAG_USE_GUROBI)
+                path = solve_OP_general( rewards, -log(surv_probs), -log(p_r), 3, num_nodes)
+            else
+                warn("Cannot compute optimal without Gurobi!");    
+            end
             println("Path = $path");
         end
         if(p_opt && (num_agents <=7 || num_agents==12 || num_agents==24 || num_agents == 18))

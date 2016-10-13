@@ -84,8 +84,8 @@ end
 function perf_vs_pr(num_iters)
     initialize_plots();
 
-    K=5;
-    psize=6;
+    K=10;
+    psize=8;
 
     pr_vals = linspace(0.31,0.99,10);
     num_node_visits = zeros(size(pr_vals,1));
@@ -99,6 +99,9 @@ function perf_vs_pr(num_iters)
 
     i = 0;
     while(i < num_iters)
+        if(i < 0)
+            i=0
+        end
         i+=1;
         println("i=$i:");
         prob,unreach = lattice_problem(psize,0.01);
@@ -113,7 +116,7 @@ function perf_vs_pr(num_iters)
             v_g, vu, v_time = greedy_solve(prob,K)
             if(v_g[end] != v_g[end])
                 i-=1;
-                println("retrying this problem: $i")
+                println("retrying this problem:")
                 break;
             end
 
@@ -126,26 +129,28 @@ function perf_vs_pr(num_iters)
             end
 #            v_g =v_g[end]+d;
         end
-        loop_ind += size(pr_vals,1);
-
-        figure(2); clf();
-        for k=1:min(9,K)
-            subplot(3,3,k);
-            seaborn.swarmplot(vec(data[k,1:i,5]));
-            title("pr=$(pr_vals[k])"); 
-            xlim([0,psize*psize+1])
-        end
-
-        figure(3); clf();
-        for k=1:min(9,K)
-            subplot(3,3,k);
-            seaborn.swarmplot(vec(loop_times[1:loop_ind,k]));
-            title("Computation time for agent $k"); 
-        end
-
         save("perf_vs_pr.jld","data",data,"ub_data",ub_data,"pr",collect(pr_vals),"num_iters",i, "times", loop_times);
         if(i > 1)
             plot_perf_vs_pr();
+        end
+
+        if(i >= 1)
+# Pretty slow plots:
+#            figure(2); clf();
+#            for k=1:min(9,K)
+#                subplot(3,3,k);
+#                seaborn.swarmplot(vec(data[k,1:i,5]));
+#                title("pr=$(pr_vals[k])"); 
+#                xlim([0,psize*psize+1])
+#            end
+
+#            figure(3); clf();
+#            for k=1:min(9,K)
+#                subplot(3,3,k);
+#                seaborn.swarmplot(vec(loop_times[:,:,k]));
+#                title("Computation time for agent $k"); 
+#            end
+
         end
     end
     return data

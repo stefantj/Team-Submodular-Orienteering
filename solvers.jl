@@ -150,7 +150,7 @@ function greedy_solve(prob, num_agents)
         times[agent] += toq();
         if(isempty(path))
             println("Solver failed.");
-            return [NaN],[NaN]
+            return [NaN],[NaN],[NaN]
         else
             tic();
             ubvals[agent] = sum(rewards[path[1:end-1]])

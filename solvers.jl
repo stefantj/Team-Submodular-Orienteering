@@ -25,12 +25,6 @@ else
 end
 
 
-
-
-
-
-
-
 # Executes the naive algorithm
 # greedily selects points until no budget left for each path. 
 # updates the rewards between paths.
@@ -170,5 +164,61 @@ function greedy_solve(prob, num_agents)
     return obj_vals, ubvals, times
 end
 
+# Solve the dual version of this problem:
+# 
+function dual_solve(prob, num_agents)
+    obj_vals = zeros(num_agents);
+    ubvals = zeros(num_agents);
+    num_nodes = prob.num_nodes
+    unvisited_prob = zeros(num_nodes) # put into logarithms
+    unvisited_prob[1] = -Inf;
+    times = zeros(num_agents);
+    for agent=1:num_agents+1
+        println("Agent $agent planning...");
+        tic();
+        # Form reward vector:
+        rewards = zeros(num_nodes)
+        slack = zeros(num_nodes)
+        slack = prob.prob_constr - (1.0-exp(unvisited_prob));
+        rewards = prob.alphas.*max(slack,0.0)
+        println("Visit constr: ", prob.prob_constr);
+        println("Visit probs: ",1-exp(unvisited_prob));
+        println("Slack: ", slack);
+        println("Rewards: $rewards");
 
+        # Check if we've already solved the problem:
+        if(maximum(rewards).< 0.0001)
+            return 1-exp(unvisited_prob), ubvals, times, agent-1
+        end
+
+        if(agent == num_agents+1)
+            return 1-exp(unvisited_prob), ubvals, times, -1;
+        end
+
+        # Solve OP
+        path = solve_OP(rewards, -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes)
+        times[agent] += toq();
+        if(isempty(path))
+            println("Solver failed.");
+            return [NaN],[NaN],[NaN]
+        else
+            tic();
+            ubvals[agent] = sum(rewards[path[1:end-1]])
+            if(agent > 1)
+                ubvals[agent] += ubvals[agent-1]
+            end
+            # Compute survival probability at each node in path
+            alive_prob = 1.0;
+            for k=2:size(path,1)
+                alive_prob*= prob.surv_probs[path[k-1],path[k]]
+                unvisited_prob[path[k]] += log(1-alive_prob);
+            end
+            obj_vals[agent] = prob.num_nodes-1 - sum(exp(unvisited_prob[1:prob.num_nodes-1]));
+            times[agent] += toq();
+        end
+    end
+
+    # Failure...
+    return obj_vals, ubvals, times, -1
+end
 

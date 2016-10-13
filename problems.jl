@@ -73,14 +73,14 @@ function lattice_problem(num_nodes_per_side, p_r)
     num_nodes = (num_nodes_per_side^2 + 1)
     surv_probs = 0.0001*ones(num_nodes, num_nodes)
 
-    prob_constr = zeros(num_nodes);
+    prob_constr = 0.9*ones(num_nodes);
 
     G = simple_graph(num_nodes)
     G.is_directed = true
     edge_index = 0;
     edge_weights = Float64[]; 
 
-    surv_level = 0.3
+    surv_level = 0.7
     rand_range = 1.0-surv_level
 
     if(true)

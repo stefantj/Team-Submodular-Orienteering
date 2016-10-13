@@ -486,4 +486,76 @@ paths2 = [3 3;
     end
 end
 
+# Run the dual problem simulation
 
+function simulate_dual(num_iters)
+    psize = 7;
+    pr_steps = 30;
+    Kmax = 50;
+    pr_min = .1
+    pr_max = 0.96
+
+    optval = Inf;
+    opt_k = 0;
+    opt_pr = 0;
+
+    # We start by generating a random problem:
+    for i = 1:num_iters
+        prob,unreach = lattice_problem(psize, 0.5);
+        pr_vals = linspace(pr_min,pr_max,pr_steps);
+        feas_grid = zeros(pr_steps, Kmax);
+        # Now perform linear search over the space:
+        pr_ind = 0;
+        maxtime = 0;
+        for pr in pr_vals
+            pr_ind += 1;
+            unreach = change_lattice_pr(prob, pr);
+            if(unreach==0)
+                visit_probs,ubvals, times, k =  dual_solve(prob, Kmax);
+                if(maximum(times)>maxtime)
+                    maxtime = maximum(times)
+                end
+            else
+                k=-1
+                visit_probs = [];
+                ubvals = [];
+                times = [];
+            end
+
+            println("Visit probs: $visit_probs\nk=$k");
+
+            if(k > 0)
+                # check if optimal:
+                if((1-pr)*k < optval)
+                    optval = (1-pr)*k;
+                    opt_k = k;
+                    opt_pr = pr;
+                end
+                for k_ind = k:Kmax
+                    feas_grid[pr_ind, k_ind] = 1.0; # mark as feasible!
+                end
+            end
+            println("Max time: ", maxtime);
+#            figure(1,figsize=(3,2));clf();
+#            imshow(fliplr(feas_grid)', cmap="RdYlGn", interpolation="none",extent=[pr_min*100, pr_max*100, 1, Kmax]);
+#            xlabel("Survival probability (percent)");
+#            ylabel("Team size");
+
+            # Add some equicost lines: 
+#            opt_equi = optval./(1-pr_vals)
+#            PyPlot.plot(100*pr_vals,opt_equi,color=:white,linestyle=":");
+#            scatter(100*opt_pr, opt_k, marker="o", color=:white)
+#            L = legend(["Equi-cost curve", "Optimal point"], loc="upper left")
+#            t = L[:get_texts]();
+#            t[1][:set_color]("white");
+#            t[2][:set_color]("white");
+
+#            grid("off");
+#            xlim([100*pr_min, 100*pr_max]);
+#            ylim([1,Kmax]);
+
+            save("dual_feasibility.jld", "feas_grid", feas_grid, "visit_probs", visit_probs, "maxtime", maxtime, "optval",optval,"opt_k",opt_k,"opt_pr",opt_pr, "pr_vals",pr_vals,"Kmax",Kmax);
+            plot_dual_data();            
+        end
+    end
+end

@@ -283,7 +283,34 @@ function plot_perf_vs_pr()
     legend([L"\mathrm{5\ agents}", L"\mathrm{3\ agents}", L"\mathrm{1\ agent}",L"\mathrm{Guarantee}"],loc="lower right")
 end
 
+function plot_dual_data()
+    data = load("dual_feasibility.jld");
+    feas_grid = data["feas_grid"];
+    optval = data["optval"]
+    opt_k = data["opt_k"];
+    opt_pr = data["opt_pr"];
+    pr_vals = data["pr_vals"];
 
+    Kmax = 50;
+
+    fig=figure(19,figsize=(3,2)); clf();
+    c = seaborn.color_palette("BuGn");
+    PyPlot.plot([],[],color=c[6], alpha=0.4);
+    imshow(fliplr(feas_grid)', cmap="BuGn", interpolation="none",extent = [minimum(pr_vals)*100, maximum(pr_vals)*100, 0, Kmax],alpha=0.4);
+    xlabel("Survival probability (percent)");
+    ylabel("Team size");
+
+    # Add some equicost lines: 
+    opt_equi = optval./(1-pr_vals)
+    PyPlot.plot(100*pr_vals,opt_equi,color=:black,linestyle=":");
+    scatter(100*opt_pr, opt_k, marker="o", color=:black)
+    L = legend(["Feasible region","Equi-cost curve", "Optimal point"], loc="upper right")
+    grid("off");
+    xlim([100*minimum(pr_vals), 100*maximum(pr_vals)]);
+    ylim([1,Kmax]);
+    fig[:subplots_adjust](bottom=0.2)
+    fig[:subplots_adjust](left=0.15)
+end
 
 
 function plot_traffic_data()

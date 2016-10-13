@@ -13,7 +13,7 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
     without_stop = [1:n_t-1; n_t+1:N];
     without_both  = intersect(without_start, without_stop);
 
-    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=100));
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500));
 
     # Indicator variables
     @defVar(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
@@ -144,7 +144,7 @@ function solve_OP_nodes(values, distances, B, n_s, n_t)
     without_both  = intersect(without_start, without_stop);
 
 
-    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=100));
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500));
 
 # Variables
     @defVar(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i

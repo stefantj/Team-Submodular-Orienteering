@@ -45,7 +45,7 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
         end
     else 
         path = [n_s]
-        x_sol = getValue(x);
+        x_sol = round(Int64,getValue(x));
         curr = findfirst(x_sol[n_s,:]);
         if(length(curr) > 0)
             while(curr[1] != n_t)

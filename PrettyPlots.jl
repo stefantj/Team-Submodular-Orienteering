@@ -129,6 +129,7 @@ function plot_perf_vs_pr()
     # Tells whether run i is complete
     complete_runs = trues(size(D,2));
 
+
     for k=1:size(D,3)
         for p=1:size(D,1)
             avg_rat = 0;
@@ -140,14 +141,9 @@ function plot_perf_vs_pr()
                 # Use larger teams as upper bound: 
                 for dk=k+1:size(D,3)
                     ub = D[p,i,dk]/ ( 1 - e^(-dk*pr_vals[p]/k));
-                    if(ub > 0)
-                        if(U[p,i,k] == 0)
-                            complete_runs[i] = false;
-                            U[p,i,k] = ub;
-                        else
-                            # This is a valid simulation
-                            U[p,i,k] = min(ub, U[p,i,k])
-                        end
+                    if(ub > 0 && U[p,i,k] > 0)
+                        # This is a valid simulation
+                        U[p,i,k] = min(ub, U[p,i,k])
                     else
                         complete_runs[i] = false;
                     end
@@ -162,26 +158,33 @@ function plot_perf_vs_pr()
                     n_rat+=1;
                 end
             end
-            
-            for i=1:size(D,2)
-                if(U[p,i ,k] == 0)
-                    complete_runs[i] = false;
-
-                #    Lo[p,i,k] = avg_rat/n_rat;
-                #    U[p,i,k] = avg_ub/n_rat;
-                #    D[p,i,k] = randn()*sqrt(var(vals)) + avg_val/n_rat;
-                end
-                #ub[p,i,k] = U[p,i,k].*(pr_vals[p]*(1-1/e));
-            end
         end
     end
-    println("Complete runs: $complete_runs");
+    println("Complete runs: ", size(find(complete_runs.==true),1));
     good_runs = [];
     for i=1:size(D,2)
         if(complete_runs[i])
             push!(good_runs,i);
         end
     end
+
+    mean_vals = zeros(size(D,1), size(D,3));
+    std_vals = Inf*ones(size(D,1), size(D,3));
+    ub_vals = zeros(size(D,1),size(D,3));
+    lb_vals = Inf*ones(size(D,1),size(D,3));
+    # Compute statistics:
+    figure(10); 
+    for p=1:size(D,1)
+        for k=1:size(D,3)
+            ratios = vec(D[p,good_runs,k]./U[p,good_runs,k]);
+            seaborn.distplot(ratios)
+            mean_vals[p,k] = mean( ratios)
+            std_vals[p,k]  = sqrt(var(ratios));
+            ub_vals[p,k] = maximum(ratios); # Alternately, use confidence interval
+            lb_vals[p,k] = minimum(ratios);
+        end
+    end
+
 
     seaborn.plotting_context("paper");
     seaborn.set_style("white");
@@ -237,6 +240,7 @@ function plot_perf_vs_pr()
     ylabel(L"\mathrm{Fraction\ of\ Upper\ Bound}");
     xlabel(L"\mathrm{Return\ Probability\ Constraint}")
     legend([L"\mathrm{5\ agents}", L"\mathrm{3\ agents}", L"\mathrm{1\ agent}",L"\mathrm{Guarantee}"],loc="lower right")
+
 # This removes incomplete runs:
     fig=figure(16,figsize=(3,2));clf();
     fig[:subplots_adjust](bottom=0.2)
@@ -249,6 +253,27 @@ function plot_perf_vs_pr()
         l = Lo[:,good_runs,k]'
         PyPlot.plot([],[],color=C[k+1],linestyle=ls[k_ind]);
         a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k+1],linestyle=ls[k_ind])
+    end
+    PyPlot.plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
+
+    ylim([0,1.1]);
+    ylabel(L"\mathrm{Fraction\ of\ Upper\ Bound}");
+    xlabel(L"\mathrm{Return\ Probability\ Constraint}")
+    legend([L"\mathrm{5\ agents}", L"\mathrm{3\ agents}", L"\mathrm{1\ agent}",L"\mathrm{Guarantee}"],loc="lower right")
+
+# Gaussian approximation for statistics
+    fig=figure(17,figsize=(3,2));clf();
+    fig[:subplots_adjust](bottom=0.2)
+    fig[:subplots_adjust](left=0.15)
+
+    ls = ["-","--","-."];
+    k_ind = 0;
+    for k=5:-2:1
+        k_ind += 1;
+        l = Lo[:,good_runs,k]'
+        PyPlot.plot(pr_vals,mean_vals[:,k],color=C[k+1],linestyle=ls[k_ind],linestyle=ls[k_ind]);
+        PyPlot.fill_between(pr_vals, ub_vals[:,k], lb_vals[:,k], color=C[k+1], alpha=0.3)
+#        a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k+1],linestyle=ls[k_ind])
     end
     PyPlot.plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
 

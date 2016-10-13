@@ -136,13 +136,13 @@ function perf_vs_pr(num_iters)
 
         if(i >= 1)
 # Pretty slow plots:
-#            figure(2); clf();
-#            for k=1:min(9,K)
-#                subplot(3,3,k);
-#                seaborn.swarmplot(vec(data[k,1:i,5]));
-#                title("pr=$(pr_vals[k])"); 
-#                xlim([0,psize*psize+1])
-#            end
+            figure(2); clf();
+            for k=1:min(9,K)
+                subplot(3,3,k);
+                seaborn.swarmplot(vec(data[k,1:i,5]));
+                title("pr=$(pr_vals[k])"); 
+                xlim([0,psize*psize+1])
+            end
 
 #            figure(3); clf();
 #            for k=1:min(9,K)

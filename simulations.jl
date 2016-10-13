@@ -1,5 +1,11 @@
 # Contains high level simulation routines
 
+global FLAG_USE_GUROBI = true;
+
+
+
+
+
 # File contains solution libraries
 include("solvers.jl");
 
@@ -13,6 +19,7 @@ println("Functions in this file:")
 println(" Compare_naive: Runs comparison with naive baseline algorithm.");
 println(" perf_vs_pr:    Runs simulation to judge performance versus p_r");
 println(" opt_vs_heur:   Runs comparison with brute-forced optimal paths on hexagon problem");
+
 
 function compare_naive(num_iters)
     initialize_plots()
@@ -45,9 +52,9 @@ function compare_naive(num_iters)
         end
 
         # Account for solutions the OP will just miss.
-        d=check_feasibility_OP(prob);
-        println("Problem has $d skipped nodes");
-        unreach[i] += d
+#        d=check_feasibility_OP(prob);
+#        println("Problem has $d skipped nodes");
+#        unreach[i] += d
 
         k_ind=1;
         v_n = randomSurvivors(prob,K)
@@ -82,14 +89,12 @@ function perf_vs_pr(num_iters)
 
     pr_vals = linspace(0.31,0.99,10);
     num_node_visits = zeros(size(pr_vals,1));
-    max_visits = zeros(size(pr_vals,1))
-    min_visits = zeros(size(pr_vals,1));
     figure(1); clf();
 
     data = zeros(size(pr_vals,1), num_iters,K);
     ub_data = zeros(size(pr_vals,1),num_iters,K);
 
-    loop_times = zeros(num_iters*size(pr_vals,1), K);
+    loop_times = zeros(size(pr_vals,1),num_iters, K);
     loop_ind = 0;
 
     i = 0;
@@ -103,8 +108,8 @@ function perf_vs_pr(num_iters)
             print(" pr = $pr: ");
             pr_ind += 1;
             unreach = change_lattice_pr(prob, pr);
-            d=check_feasibility_OP(prob);
-            println("Problem has $d skipped nodes");
+#            d=check_feasibility_OP(prob);
+#            println("Problem has $d skipped nodes");
             v_g, vu, v_time = greedy_solve(prob,K)
             if(v_g[end] != v_g[end])
                 i-=1;
@@ -112,34 +117,17 @@ function perf_vs_pr(num_iters)
                 break;
             end
 
-            loop_times[loop_ind + pr_ind,:] = vec(v_time)';
+            loop_times[pr_ind, i,:] = vec(v_time)';
 
-            v_g += d;
+#            v_g += d;
             for k=1:K
                 data[pr_ind, i,k] = v_g[k];
                 ub_data[pr_ind,i,k] = min(psize*psize-unreach,v_g[k]/( 1- e^(-pr)))
             end
-            v_g =v_g[end]+d;
-            if(i==1)
-                max_visits[pr_ind] = v_g;
-                min_visits[pr_ind] = v_g;
-            end
-            if(max_visits[pr_ind] < v_g)
-                max_visits[pr_ind] = v_g
-            end
-            if(min_visits[pr_ind] > v_g)
-                min_visits[pr_ind] = v_g
-            end
-            num_node_visits[pr_ind] = v_g/i + num_node_visits[pr_ind]*(i-1)/i;
+#            v_g =v_g[end]+d;
         end
         loop_ind += size(pr_vals,1);
 
-        figure(1);
-        PyPlot.plot(pr_vals, num_node_visits,color=:blue);
-        PyPlot.fill_between(pr_vals, max_visits, min_visits, color=:blue, alpha=0.3);
-        approx = 1./( 1 - e.^(-pr_vals) )
-        PyPlot.plot(pr_vals, min(num_node_visits.*approx, psize*psize), color=:green);
-        println(num_node_visits);
         figure(2); clf();
         for k=1:min(9,K)
             subplot(3,3,k);

@@ -114,7 +114,6 @@ function lattice_problem(num_nodes_per_side, p_r)
     end
 
     for i = 1:num_nodes
-        println("$i");
         surv_probs[i,num_nodes] = surv_probs[1,i];
         for j = i:num_nodes
             surv_probs[j,i] = surv_probs[i,j];

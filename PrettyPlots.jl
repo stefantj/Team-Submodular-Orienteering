@@ -41,33 +41,50 @@ initialize_plots();
 
 function plot_compare_naive_trial()
     Pretty_Plot_Colors = get_colors();
-    data = load("sim_data/compare_naive.jld");
+    data = load("compare_naive.jld");
     v_g = data["val_greed"];
     v_n = data["val_naive"];
     v_u = data["val_ub"];
 
-    println(size(v_g))
+    num_agents = 25
 
-    num_agents = 5
-
-    xlabels = [L"1","",L"2","",L"3","",L"4","",L"5"];#,L"6",L"7",L"8",L"9",L"10"];
+    selector = [];
+    m_u = zeros(num_agents);
+    m_g = zeros(num_agents);
+    m_n = zeros(num_agents);
+    s_u = zeros(num_agents);
+    s_g = zeros(num_agents);
+    s_n = zeros(num_agents);
+    for k=1:size(v_u,1)
+        if(v_u[k,1] > 0.0001)
+            selector = [selector; k];
+        end
+    end
+    for k=1:num_agents
+        m_u[k] = mean(v_u[selector,k]);
+        m_n[k] = mean(v_n[selector,k]);
+        m_g[k] = mean(v_g[selector,k]);
+        s_u[k] = sqrt(var(v_u[selector,k]));
+        s_n[k] = sqrt(var(v_n[selector,k]));
+        s_g[k] = sqrt(var(v_g[selector,k]));
+    end
 
     initialize_plots();
     fig = figure(11,figsize=(3,2));clf();
-    PyPlot.plot([],[],color=Pretty_Plot_Colors[1],linestyle=":");
-    PyPlot.plot([],[],color=Pretty_Plot_Colors[3]);
-    PyPlot.plot([],[],color=Pretty_Plot_Colors[5]);
-    seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_u,color=Pretty_Plot_Colors[1],linestyle=":");
-    seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_g,color=Pretty_Plot_Colors[3]);
-    ax=seaborn.tsplot(time=round(Int64,collect(1:num_agents)),v_n,color=Pretty_Plot_Colors[6]);
+    # Mean values:
+    PyPlot.plot(round(Int64,collect(1:num_agents)),m_u,color=Pretty_Plot_Colors[1],linestyle=":");
+    PyPlot.plot(round(Int64,collect(1:num_agents)),m_g,color=Pretty_Plot_Colors[3],linestyle="-");
+    PyPlot.plot(round(Int64,collect(1:num_agents)),m_n,color=Pretty_Plot_Colors[6],linestyle="--");
+
+    # Confidence interval:
+    fill_between(round(Int64, collect(1:num_agents)), m_u+s_u, m_u-s_u, color=Pretty_Plot_Colors[1], alpha=0.3);
+    fill_between(round(Int64, collect(1:num_agents)), m_g+s_g, m_g-s_g, color=Pretty_Plot_Colors[3], alpha=0.3);
+    fill_between(round(Int64, collect(1:num_agents)), m_n+s_n, m_n-s_n, color=Pretty_Plot_Colors[6], alpha=0.3);
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
-    ax[:set](xticklabels=xlabels)
     ylabel(L"\mathrm{Number\ of\ nodes\ visited}");
     xlabel(L"\mathrm{Team\ size}")
-
     legend([L"\mathrm{Upper\ Bound}", L"\mathrm{Greedy Survivors}",L"\mathrm{Baseline}"],loc="lower right")
-    
 end
 
 function plot_opt_vs_heur()
@@ -98,16 +115,20 @@ end
 
 function plot_perf_vs_pr()
     C = get_colors();
-    data = load("sim_data/perf_vs_pr.jld");
+#    data = load("sim_data/perf_vs_pr.jld");
+    data = load("perf_vs_pr.jld");
     D = data["data"]
     U = data["ub_data"];
-    pr_vals = linspace(0.31,0.99,15)
-#    xlabels = [L".3",L".4",L".5",L".6",L".7",L".8",L".9"];
-
+    pr_vals = data["pr"]; 
+    num_iters = data["num_iters"];
 
     # Loosenes of bound:
     Lo = zeros(D);
     Lb = zeros(D);
+
+    # Tells whether run i is complete
+    complete_runs = trues(size(D,2));
+
     for k=1:size(D,3)
         for p=1:size(D,1)
             avg_rat = 0;
@@ -121,10 +142,14 @@ function plot_perf_vs_pr()
                     ub = D[p,i,dk]/ ( 1 - e^(-dk*pr_vals[p]/k));
                     if(ub > 0)
                         if(U[p,i,k] == 0)
+                            complete_runs[i] = false;
                             U[p,i,k] = ub;
                         else
+                            # This is a valid simulation
                             U[p,i,k] = min(ub, U[p,i,k])
                         end
+                    else
+                        complete_runs[i] = false;
                     end
                 end
 
@@ -139,64 +164,93 @@ function plot_perf_vs_pr()
             end
             
             for i=1:size(D,2)
-                if(U[p,i,k] == 0)
-                    Lo[p,i,k] = avg_rat/n_rat;
-                    U[p,i,k] = avg_ub/n_rat;
-                    D[p,i,k] = randn()*sqrt(var(vals)) + avg_val/n_rat;
+                if(U[p,i ,k] == 0)
+                    complete_runs[i] = false;
+
+                #    Lo[p,i,k] = avg_rat/n_rat;
+                #    U[p,i,k] = avg_ub/n_rat;
+                #    D[p,i,k] = randn()*sqrt(var(vals)) + avg_val/n_rat;
                 end
-                Lb[p,i,k] = U[p,i,k].*(pr_vals[p]*(1-1/e));
+                #ub[p,i,k] = U[p,i,k].*(pr_vals[p]*(1-1/e));
             end
+        end
+    end
+    println("Complete runs: $complete_runs");
+    good_runs = [];
+    for i=1:size(D,2)
+        if(complete_runs[i])
+            push!(good_runs,i);
         end
     end
 
     seaborn.plotting_context("paper");
     seaborn.set_style("white");
-    fig=figure(13,figsize=(3,2));clf();
+    fig=figure(13,figsize=(3,2));#clf();
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
     fig[:subplots_adjust](wspace=0.3)
     
     x = U[:,:,1];
-    plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
+    PyPlot.plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
     x = D[:,:,1];
-    a=plot(pr_vals, mean(x,2),color=C[2]);
+    a=PyPlot.plot(pr_vals, mean(x,2),color=C[2]);
     x = Lb[:,:,1];
-    plot(pr_vals, mean(x,2),color=C[4],linestyle=":");
+    PyPlot.plot(pr_vals, mean(x,2),color=C[4],linestyle=":");
     ylim([0,70]);
     title(L"\mathrm{Single\ agent}");
     ylabel(L"\mathrm{Number\ of\ visited\ nodes}");
     xlabel(L"$ p_s$")
     legend([L"\mathrm{Upper\ bound}", L"\mathrm{Average}", L"\mathrm{Lower\ Bound}"],loc="lower right");
 
-    fig=figure(14,figsize=(3,2));clf();
+    fig=figure(14,figsize=(3,2));#clf();
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
     fig[:subplots_adjust](wspace=0.3)
     x = U[:,:,end];
-    plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
+    PyPlot.plot(pr_vals, mean(x,2),color=C[1],linestyle=":");
     x = D[:,:,end];
-    a=plot(pr_vals, mean(x,2),color=C[2]);
+    a=PyPlot.plot(pr_vals, mean(x,2),color=C[2]);
     x = Lb[:,:,end];
-    plot(pr_vals, mean(x,2),color=C[4],linestyle=":");
+    PyPlot.plot(pr_vals, mean(x,2),color=C[4],linestyle=":");
     ylim([0,70]);
     title(L"\mathrm{5\ agents}");
     legend([L"\mathrm{Upper\ bound}", L"\mathrm{Average}", L"\mathrm{Lower\ Bound}"],loc="lower right");
     ylim([0,70]);
     xlabel(L"$ p_s$")
 
+### This is the published figure
     fig=figure(15,figsize=(3,2));clf();
     fig[:subplots_adjust](bottom=0.2)
     fig[:subplots_adjust](left=0.15)
 
     ls = ["-","--","-."];
     k_ind = 0;
-    for k=size(D,3):-2:1
+    for k=5:-2:1
         k_ind += 1;
         l = Lo[:,:,k]'
-        plot([],[],color=C[k+1],linestyle=ls[k_ind]);
+        PyPlot.plot([],[],color=C[k+1],linestyle=ls[k_ind]);
         a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k+1],linestyle=ls[k_ind])
     end
-    plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
+    PyPlot.plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
+
+    ylim([0,1.1]);
+    ylabel(L"\mathrm{Fraction\ of\ Upper\ Bound}");
+    xlabel(L"\mathrm{Return\ Probability\ Constraint}")
+    legend([L"\mathrm{5\ agents}", L"\mathrm{3\ agents}", L"\mathrm{1\ agent}",L"\mathrm{Guarantee}"],loc="lower right")
+# This removes incomplete runs:
+    fig=figure(16,figsize=(3,2));clf();
+    fig[:subplots_adjust](bottom=0.2)
+    fig[:subplots_adjust](left=0.15)
+
+    ls = ["-","--","-."];
+    k_ind = 0;
+    for k=5:-2:1
+        k_ind += 1;
+        l = Lo[:,good_runs,k]'
+        PyPlot.plot([],[],color=C[k+1],linestyle=ls[k_ind]);
+        a=seaborn.tsplot(time=pr_vals,l,ci=[68],color=C[k+1],linestyle=ls[k_ind])
+    end
+    PyPlot.plot(pr_vals, 1-e.^(-pr_vals),color=:black,linestyle=":");
 
     ylim([0,1.1]);
     ylabel(L"\mathrm{Fraction\ of\ Upper\ Bound}");

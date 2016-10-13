@@ -101,15 +101,20 @@ function greedy_solve(prob, num_agents)
     num_nodes = prob.num_nodes
     unvisited_prob = zeros(num_nodes) # put into logarithms
     unvisited_prob[1] = -Inf;
+    times = zeros(num_agents);
     for agent=1:num_agents
+        println("Agent $agent planning...");
+        tic();
         # Form reward vector:
         rewards = prob.alphas.*exp(unvisited_prob);
         # Solve OP
         path = solve_OP(rewards, -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes)
+        times[agent] += toq();
         if(isempty(path))
             println("Solver failed.");
             return [NaN],[NaN]
         else
+            tic();
             ubvals[agent] = sum(rewards[path[1:end-1]])
             if(agent > 1)
                 ubvals[agent] += ubvals[agent-1]
@@ -121,9 +126,10 @@ function greedy_solve(prob, num_agents)
                 unvisited_prob[path[k]] += log(1-alive_prob);
             end
             obj_vals[agent] = prob.num_nodes-1 - sum(exp(unvisited_prob[1:prob.num_nodes-1]));
+            times[agent] += toq();
         end
     end
-    return obj_vals, ubvals
+    return obj_vals, ubvals, times
 end
 
 
@@ -364,7 +370,7 @@ function check_feasibility_OP(prob)
     for k=2:prob.num_nodes-1
         rewards= zeros(prob.num_nodes);
         rewards[k] = 1.0
-        path = solve_OP(rewards, log(prob.surv_probs), log(prob.p_r), 1, prob.num_nodes)
+        path = solve_OP(rewards, -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes)
         if(prob.alphas[k] == 0)
         else
             if( k in path)

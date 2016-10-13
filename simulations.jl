@@ -51,8 +51,11 @@ function compare_naive(num_iters)
 
         k_ind=1;
         v_n = randomSurvivors(prob,K)
-        val_naive[i,:] = v_n';
         v_g, vu = greedy_solve(prob,K) # somewhat suspicious of the upper bound. Need to check
+        if(size(v_g,1)!=K)
+            continue
+        end
+        val_naive[i,:] = v_n';
         val_greed[i,:] = v_g';
         for k=1:K
                                 # Trivial upper bound    computed
@@ -65,9 +68,9 @@ function compare_naive(num_iters)
         legend(["Naive solution", "Greedy algorithm"])
         xlabel("Team size")
         ylabel("Average number of nodes visited");
+        save("compare_naive.jld", "val_naive",val_naive, "val_greed",val_greed, "val_ub", val_ub, "num_iters", num_iters);
     end
 
-    save("compare_naive.jld", "val_naive",val_naive, "val_greed",val_greed, "val_ub", val_ub, "num_iters", num_iters);
     return val_naive,val_greed
 end
 
@@ -75,9 +78,9 @@ function perf_vs_pr(num_iters)
     initialize_plots();
 
     K=5;
-    psize=8;
+    psize=6;
 
-    pr_vals = linspace(0.31,0.99,15);
+    pr_vals = linspace(0.31,0.99,10);
     num_node_visits = zeros(size(pr_vals,1));
     max_visits = zeros(size(pr_vals,1))
     min_visits = zeros(size(pr_vals,1));
@@ -86,22 +89,31 @@ function perf_vs_pr(num_iters)
     data = zeros(size(pr_vals,1), num_iters,K);
     ub_data = zeros(size(pr_vals,1),num_iters,K);
 
-    for i=1:num_iters
+    loop_times = zeros(num_iters*size(pr_vals,1), K);
+    loop_ind = 0;
+
+    i = 0;
+    while(i < num_iters)
+        i+=1;
         println("i=$i:");
         prob,unreach = lattice_problem(psize,0.01);
         pr_ind = 0;
         for pr in pr_vals
+            
             print(" pr = $pr: ");
             pr_ind += 1;
             unreach = change_lattice_pr(prob, pr);
             d=check_feasibility_OP(prob);
             println("Problem has $d skipped nodes");
-            v_g, vu = greedy_solve(prob,K)
+            v_g, vu, v_time = greedy_solve(prob,K)
             if(v_g[end] != v_g[end])
-                println("retrying this problem")
                 i-=1;
+                println("retrying this problem: $i")
                 break;
             end
+
+            loop_times[loop_ind + pr_ind,:] = vec(v_time)';
+
             v_g += d;
             for k=1:K
                 data[pr_ind, i,k] = v_g[k];
@@ -120,14 +132,34 @@ function perf_vs_pr(num_iters)
             end
             num_node_visits[pr_ind] = v_g/i + num_node_visits[pr_ind]*(i-1)/i;
         end
+        loop_ind += size(pr_vals,1);
 
+        figure(1);
         PyPlot.plot(pr_vals, num_node_visits,color=:blue);
         PyPlot.fill_between(pr_vals, max_visits, min_visits, color=:blue, alpha=0.3);
         approx = 1./( 1 - e.^(-pr_vals) )
         PyPlot.plot(pr_vals, min(num_node_visits.*approx, psize*psize), color=:green);
         println(num_node_visits);
+        figure(2); clf();
+        for k=1:min(9,K)
+            subplot(3,3,k);
+            seaborn.swarmplot(vec(data[k,1:i,5]));
+            title("pr=$(pr_vals[k])"); 
+            xlim([0,psize*psize+1])
+        end
+
+        figure(3); clf();
+        for k=1:min(9,K)
+            subplot(3,3,k);
+            seaborn.swarmplot(vec(loop_times[1:loop_ind,k]));
+            title("Computation time for agent $k"); 
+        end
+
+        save("perf_vs_pr.jld","data",data,"ub_data",ub_data,"pr",collect(pr_vals),"num_iters",i, "times", loop_times);
+        if(i > 1)
+            plot_perf_vs_pr();
+        end
     end
-    save("perf_vs_pr.jld","data",data,"ub_data",ub_data,"pr",collect(pr_vals),"num_iters",num_iters);
     return data
 end
 

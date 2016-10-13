@@ -80,7 +80,7 @@ function lattice_problem(num_nodes_per_side, p_r)
     edge_index = 0;
     edge_weights = Float64[]; 
 
-    surv_level = 0.68
+    surv_level = 0.3
     rand_range = 1.0-surv_level
 
     if(true)

@@ -47,10 +47,11 @@ function compare_naive(num_iters)
 
     for i=1:num_iters
         psize=8
-        prob,unreach[i] = lattice_problem(psize,0.8)
+        prob,unreach[i] = euclidean_problem(psize,0.8)
 
         while(unreach[i] > 1)
-            prob,unreach[i] = lattice_problem(psize,0.8)
+            println("Re-starting problem");
+            prob,unreach[i] = euclidean_problem(psize,0.8)
         end
 
         # Account for solutions the OP will just miss.
@@ -507,7 +508,7 @@ function simulate_dual(num_iters)
 
     # We start by generating a random problem:
     for i = 1:num_iters
-        prob,unreach = lattice_problem(psize, 0.5);
+        prob,unreach = euclidean_problem(psize, 0.5);
         pr_vals = linspace(pr_min,pr_max,pr_steps);
         feas_grid = zeros(pr_steps, Kmax);
         # Now perform linear search over the space:

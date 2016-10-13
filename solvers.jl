@@ -197,7 +197,7 @@ function dual_solve(prob, num_agents)
         end
 
         # Solve OP
-        path = solve_OP(rewards, -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes)
+        path = solve_OP(rewards, prob, -log(prob.p_r), 1, prob.num_nodes)
         times[agent] += toq();
         if(isempty(path))
             println("Solver failed.");

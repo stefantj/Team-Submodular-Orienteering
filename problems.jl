@@ -192,7 +192,10 @@ function euclidean_problem(num_nodes_per_side, p_r)
     is_euclidean=true;
     locations = linspace(0,1,num_nodes_per_side);
 
-    prob_constr = zeros(num_nodes);
+    prob_constr = 0.9*ones(num_nodes);
+
+    # smaller means higher survival
+    surv_scaling = 0.04;
 
     G = simple_graph(num_nodes)
     G.is_directed = true
@@ -202,7 +205,6 @@ function euclidean_problem(num_nodes_per_side, p_r)
     xvals = zeros(num_nodes);
     yvals = zeros(num_nodes);
 
-    if(true)
     for i = 1:num_nodes-1
         p_i = [locations[floor((i-1)/num_nodes_per_side)+1], locations[mod((i-1), num_nodes_per_side)+1]];
         xvals[i] = p_i[1];
@@ -210,35 +212,12 @@ function euclidean_problem(num_nodes_per_side, p_r)
 
         for j=i+1:num_nodes-1
             p_j = [locations[floor((j-1)/num_nodes_per_side)+1], locations[mod((j-1), num_nodes_per_side)+1]];
-            surv_probs[i,j] = norm(p_i-p_j);
+            surv_probs[i,j] = exp(-surv_scaling*norm(p_i-p_j)) # make -log(surv_probs) proportional to distance
         end
     end
 
     xvals[end] = xvals[1];
     yvals[end] = yvals[1];
-
-    # This creates a lattice:
-    else
-    for i=1:num_nodes-1
-        neighb_up = i + num_nodes_per_side;
-        neighb_down = i - num_nodes_per_side;
-        neighb_right = i + 1
-        neighb_left = i-1;
-
-        if(neighb_up <= num_nodes-1)
-            surv_probs[i, neighb_up] = rand_range*rand()+surv_level;
-        end 
-        if(neighb_down > 0)
-            surv_probs[i,neighb_down] = rand_range*rand()+surv_level;
-        end
-        if(mod(i-1, num_nodes_per_side) != 0)
-            surv_probs[i, neighb_left] = rand_range*rand()+surv_level;
-        end
-        if(mod(i-1, num_nodes_per_side) != num_nodes_per_side-1)
-            surv_probs[i, neighb_right] = rand_range*rand()+surv_level;
-        end
-    end
-    end
 
     for i = 1:num_nodes
         surv_probs[i,num_nodes] = surv_probs[1,i];
@@ -247,13 +226,13 @@ function euclidean_problem(num_nodes_per_side, p_r)
             if(surv_probs[i,j] > sqrt(p_r))
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, i, j));
-                edge_weights = [edge_weights; -log(surv_probs[i,j]/sqrt(2))];
+                edge_weights = [edge_weights; surv_probs[i,j]/sqrt(2)];
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, j, i));
-                edge_weights = [edge_weights; -log(surv_probs[i,j]/sqrt(2))];
+                edge_weights = [edge_weights; surv_probs[i,j]/sqrt(2)];
             end
         end
-    end 
+    end
 
 
 # Use Dijkstra's to find the shortest paths for bounds
@@ -270,7 +249,7 @@ function euclidean_problem(num_nodes_per_side, p_r)
             continue;
         end
 
-        while(prev != 1)
+        while(prev > 1)
             alpha[j] *= surv_probs[curr,prev]
             curr = prev
             prev = ssp.parents[curr];
@@ -279,8 +258,11 @@ function euclidean_problem(num_nodes_per_side, p_r)
                 break;
             end
             beta[j] *= surv_probs[curr,prev]
+            if(prev == 0)
+                warn("Dijkstra's has a bug");
+            end
         end
-        alpha[j] *= surv_probs[curr, 1];
+        alpha[j] *= surv_probs[curr, 1]
     end
 
     lbs=zeros(num_nodes);

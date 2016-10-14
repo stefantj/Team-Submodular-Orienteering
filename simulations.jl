@@ -47,11 +47,10 @@ function compare_naive(num_iters)
 
     for i=1:num_iters
         psize=8
-        prob,unreach[i] = euclidean_problem(psize,0.8)
+        prob,unreach[i] = lattice_problem(psize,0.8)
 
         while(unreach[i] > 1)
-            println("Re-starting problem");
-            prob,unreach[i] = euclidean_problem(psize,0.8)
+            prob,unreach[i] = lattice_problem(psize,0.8)
         end
 
         # Account for solutions the OP will just miss.

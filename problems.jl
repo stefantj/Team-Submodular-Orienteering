@@ -192,10 +192,10 @@ function euclidean_problem(num_nodes_per_side, p_r)
     is_euclidean=true;
     locations = linspace(0,1,num_nodes_per_side);
 
-    prob_constr = 0.9*ones(num_nodes);
+    prob_constr = 0.29*ones(num_nodes);
 
     # smaller means higher survival
-    surv_scaling = 0.04;
+    surv_scaling = 0.24;
 
     G = simple_graph(num_nodes)
     G.is_directed = true

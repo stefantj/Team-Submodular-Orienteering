@@ -179,13 +179,14 @@ function dual_solve(prob, num_agents)
     unvisited_prob[1] = -Inf;
     times = zeros(num_agents);
     for agent=1:num_agents+1
-        println("Agent $agent planning...");
         tic();
         # Form reward vector:
         rewards = zeros(num_nodes)
         slack = zeros(num_nodes)
         slack = prob.prob_constr - (1.0-exp(unvisited_prob));
         rewards = prob.alphas.*max(slack,0.0)
+        println("Rewards:", rewards);
+        println("Agent $agent planning...", sum(rewards), " reward left");
 
         # Check if we've already solved the problem:
         if(maximum(rewards).< 0.0001)

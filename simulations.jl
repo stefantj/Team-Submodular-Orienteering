@@ -495,9 +495,9 @@ end
 # Run the dual problem simulation
 
 function simulate_dual(num_iters)
-    psize = 6;
+    psize = 7;
     pr_steps = 30;
-    Kmax = 50;
+    Kmax = 70;
     pr_min = .1
     pr_max = 0.96
 

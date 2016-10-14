@@ -200,6 +200,45 @@ function dual_solve(prob, num_agents)
         # Solve OP
         path = solve_OP(rewards, prob, -log(prob.p_r), 1, prob.num_nodes)
         times[agent] += toq();
+
+        val = sum(rewards[path]);
+        if( val <= 0.001 )
+            println("path is $path");
+            warn("Using fake SSP approach");
+            # Use Dijkstra's to plan to closest non-zero neighbor:
+            valuable_nodes = find(rewards.>0.0);
+# Illustrate which nodes are missing:
+figure(5);clf(); PyPlot.plot(1:prob.num_nodes, maximum(prob.alphas[valuable_nodes])*ones(prob.num_nodes)); scatter(1:size(prob.alphas,1), prob.alphas, alpha=0.3); scatter(valuable_nodes,prob.alphas[valuable_nodes])
+fill_between(1:prob.num_nodes, exp(log(prob.p_r)/9)*ones(prob.num_nodes), exp(log(prob.p_r)/7)*ones(prob.num_nodes), alpha=0.3);
+# Compare budgets:
+            bud_missing_max = -log(maximum(prob.alphas[valuable_nodes]));
+            bud_missing_min = -log(minimum(prob.alphas[valuable_nodes]));
+            bud = -log(prob.p_r);
+            figure(6); clf();
+            PyPlot.plot(1:2, bud_missing_max*[1,1]);
+            PyPlot.plot(1:2, bud*[1,1]);
+            PyPlot.plot(1:2, (bud/bud_missing_max)*[1,1]);
+            PyPlot.plot(1:2, (bud_missing_max/bud)*[1,1]);
+            legend(["Max","Bud","Bud/Max","Max/Bud"]);
+            
+            
+
+
+            println("Alphas: ", prob.alphas[valuable_nodes]);
+            best = valuable_nodes[indmin(prob.alphas[valuable_nodes])]
+            ssp = Graphs.dijkstra_shortest_paths(prob.G, prob.edge_probs, 1);
+            curr = best; 
+            prev = ssp.parents[curr];
+            path = [prev; curr; prev]
+            while(prev>1)
+                if(prev > prob.num_nodes || prev == 0)
+                    println("Something went wrong!");
+                end
+                prev = ssp.parents[curr];
+                path = [prev; path; prev]; # NOTE: THIS IS WRONG!! path should not have same edges twice
+            end
+        end
+    
         if(isempty(path))
             println("Solver failed.");
             return [NaN],[NaN],[NaN]

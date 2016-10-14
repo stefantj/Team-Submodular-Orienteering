@@ -7,63 +7,94 @@ using JLD
 # change_lattice_pr(prob, p_r): Updates the problem to have a new p_r value
 
 type pr_problem
-    num_nodes::Int64
-    prob_constr::Vector{Float64}
-    surv_probs::Matrix{Float64}
-    alphas::Vector{Float64}
-    lbs::Vector{Float64}
-    p_r::Float64
-    G # abstract graph
-    edge_probs::Vector{Float64}
-    is_euclidean::Bool 
-    x_points::Vector{Float64}
-    y_points::Vector{Float64}
+    num_nodes::Int64            # Number of nodes in graph
+    prob_constr::Vector{Float64}# For dual problem only: Constraints for visiting each node
+    surv_probs::Matrix{Float64} # Survival probability (distance matrix)
+    alphas::Vector{Float64}     # Upper bounds on cost to node
+    lbs::Vector{Float64}        # Lower bounds on cost to return from node
+    alpha_paths::Vector{Vector{Int64}} # Cheapest path to node
+    beta_paths::Vector{Vector{Int64}}  # Cheapest path from node to depot
+    p_r::Float64                # Survival constraint
+    G                           # abstract graph
+    edge_probs::Vector{Float64} # log-transformed weights of edges
+    edge_inds::Matrix{Int64}  # Lookup table for edge indices
+    # Variables for Euclidean Graphs:
+    is_euclidean::Bool          # Indicates euclidean ness
+    x_points::Vector{Float64}   # X values - zeros if noneuclidean
+    y_points::Vector{Float64}   # Y values - zeros if noneuclidean
 end
 
 
 function change_lattice_pr(prob::pr_problem, p_r)
 # Use Dijkstra's to find the shortest paths for bounds
-     ssp = Graphs.dijkstra_shortest_paths(prob.G, prob.edge_probs, 1)
+    ssp = Graphs.dijkstra_shortest_paths(prob.G, prob.edge_probs, 1)
     num_nodes = prob.num_nodes
     # Compute \alpha_j
     alpha = ones(num_nodes);
-    beta  = ones(num_nodes);
+    beta =  ones(num_nodes);
     for j = 2:num_nodes-1
-#        print("Shortest path to $j: ")
+        # Compute shortest path to node j:
         curr = j;
         prev = ssp.parents[curr];
         if(prev>num_nodes || prev==0)
             alpha[j]=0;
             continue;
         end
+        prob.alpha_paths[j] = [prev;curr];
+
+        # Used to mark taken edges as `ignore'
+        ignore_weights = zeros(size(prob.edge_probs,1));
+        ignore_weights[prob.edge_inds[prev,curr]] = 100000;
+        ignore_weights[prob.edge_inds[curr,prev]] = 100000;
 
         while(prev != 1)
             alpha[j] *= prob.surv_probs[curr,prev]
             curr = prev
-#            print("$curr ");
             prev = ssp.parents[curr];
+            ignore_weights[prob.edge_inds[prev,curr]] = 1000000;
+            ignore_weights[prob.edge_inds[curr,prev]] = 1000000;
+            prepend!(prob.alpha_paths[j],[prev])
             if(prev > num_nodes)
                 alpha[j]=0;
                 break;
             end
-            beta[j] *= prob.surv_probs[curr,prev]
         end
         alpha[j] *= prob.surv_probs[curr, 1];
-#        println("$prev] prob = ", alpha[j]);
+
+        # Now compute shortest path from node which does not take any edges in alpha_path
+        sspB = Graphs.dijkstra_shortest_paths(prob.G, prob.edge_probs+ignore_weights, j)
+
+        # Compute shortest path to node 1:
+        curr = 1;
+        prev = sspB.parents[curr];
+        if(prev>num_nodes || prev==0)
+            beta[j]=0;
+            continue;
+        end
+        prob.beta_paths[j] = [prev;curr];
+        while(prev != j)
+            beta[j] *= prob.surv_probs[curr,prev]
+            curr = prev
+            prev = sspB.parents[curr];
+            prepend!(prob.beta_paths[j],[prev])
+            if(prev > num_nodes)
+                beta[j]=0;
+                break;
+            end
+        end
+        beta[j] *= prob.surv_probs[curr, j];
     end
     lbs=zeros(num_nodes);
     unreachable = 0.0;
     for j = 1:num_nodes
-        if(alpha[j]*alpha[j] < p_r) # this node is impossible to reach
-#            println("Node $j unreachable: ", alpha[j], "^2 = ", alpha[j]*alpha[j]);
+        if(alpha[j]*beta[j] < p_r) # this node is impossible to reach
             alpha[j] = 0.0;
+            beta[j]  = 0.0;
             unreachable+=1;
         else
             lbs[j] = p_r/beta[j]; 
         end
     end 
-    
-#    Graphs.plot(G)
 
     println("Problem has $unreachable unreachable nodes");
     prob.p_r = p_r;
@@ -77,6 +108,7 @@ function lattice_problem(num_nodes_per_side, p_r)
     surv_probs = 0.0001*ones(num_nodes, num_nodes)
 
     prob_constr = 0.9*ones(num_nodes);
+
     is_euclidean = false;
     xpts = zeros(num_nodes);
     ypts = zeros(num_nodes);
@@ -85,6 +117,7 @@ function lattice_problem(num_nodes_per_side, p_r)
     G.is_directed = true
     edge_index = 0;
     edge_weights = Float64[]; 
+    edge_indices = round(Int64,zeros(num_nodes, num_nodes));
 
     surv_level = 0.7
     rand_range = 1.0-surv_level
@@ -126,62 +159,21 @@ function lattice_problem(num_nodes_per_side, p_r)
             if(surv_probs[i,j] > sqrt(p_r))
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, i, j));
+                edge_indices[i,j] = edge_index;
                 edge_weights = [edge_weights; -log(surv_probs[i,j])];
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, j, i));
                 edge_weights = [edge_weights; -log(surv_probs[i,j])];
+                edge_indices[j,i] = edge_index;
             end
         end
     end 
 
-#    println(surv_probs)
+    a_path = Vector{Vector{Int64}}(num_nodes)
+    b_path = Vector{Vector{Int64}}(num_nodes)
+    prob = pr_problem(num_nodes, prob_constr, surv_probs, zeros(num_nodes), zeros(num_nodes), a_path, b_path, p_r, G, edge_weights, edge_indices, is_euclidean, xpts, ypts)
 
-# Use Dijkstra's to find the shortest paths for bounds
-     ssp = Graphs.dijkstra_shortest_paths(G, edge_weights, 1)
-
-    # Compute \alpha_j
-    alpha = ones(num_nodes);
-    beta  = ones(num_nodes);
-    for j = 2:num_nodes-1
-#        print("Shortest path to $j: ")
-        curr = j;
-        prev = ssp.parents[curr];
-        if(prev>num_nodes || prev==0)
-            alpha[j]=0;
-            continue;
-        end
-
-        while(prev != 1)
-            alpha[j] *= surv_probs[curr,prev]
-            curr = prev
-#            print("$curr ");
-            prev = ssp.parents[curr];
-            if(prev > num_nodes)
-                alpha[j]=0;
-                break;
-            end
-            beta[j] *= surv_probs[curr,prev]
-        end
-        alpha[j] *= surv_probs[curr, 1];
-#        println("$prev] prob = ", alpha[j]);
-    end
-
-    lbs=zeros(num_nodes);
-    unreachable = 0.0;
-    for j = 1:num_nodes
-        if(alpha[j]*alpha[j] < p_r) # this node is impossible to reach
-#            println("Node $j unreachable: ", alpha[j], "^2 = ", alpha[j]*alpha[j]);
-            alpha[j] = 0.0;
-            unreachable+=1;
-        else
-            lbs[j] = p_r/beta[j]; 
-        end
-    end 
-    
-#    Graphs.plot(G)
-
-    println("Problem has $unreachable unreachable nodes");
-    prob = pr_problem(num_nodes, prob_constr, surv_probs, alpha, lbs, p_r, G, edge_weights,is_euclidean,xpts,ypts)
+    unreachable = change_lattice_pr(prob, p_r)
     return prob, unreachable
 end
 
@@ -201,6 +193,7 @@ function euclidean_problem(num_nodes_per_side, p_r)
     G.is_directed = true
     edge_index = 0;
     edge_weights = Float64[]; 
+    edge_indices = round(Int64, zeros(num_nodes, num_nodes))
 
     xvals = zeros(num_nodes);
     yvals = zeros(num_nodes);
@@ -226,59 +219,21 @@ function euclidean_problem(num_nodes_per_side, p_r)
             if(surv_probs[i,j] > sqrt(p_r))
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, i, j));
+                edge_indices[i,j] = edge_index;
                 edge_weights = [edge_weights; surv_probs[i,j]/sqrt(2)];
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, j, i));
+                edge_indices[j,i] = edge_index;
                 edge_weights = [edge_weights; surv_probs[i,j]/sqrt(2)];
             end
         end
     end
 
+    a_path = Vector{Vector{Int64}}(num_nodes)
+    b_path = Vector{Vector{Int64}}(num_nodes)
+    prob = pr_problem(num_nodes, prob_constr, surv_probs, zeros(num_nodes), zeros(num_nodes), a_path, b_path, p_r, G, edge_weights, edge_indices, is_euclidean, xvals, yvals)
 
-# Use Dijkstra's to find the shortest paths for bounds
-     ssp = Graphs.dijkstra_shortest_paths(G, edge_weights, 1)
-
-    # Compute \alpha_j
-    alpha = ones(num_nodes);
-    beta  = ones(num_nodes);
-    for j = 2:num_nodes-1
-        curr = j;
-        prev = ssp.parents[curr];
-        if(prev>num_nodes || prev==0)
-            alpha[j]=0;
-            continue;
-        end
-
-        while(prev > 1)
-            alpha[j] *= surv_probs[curr,prev]
-            curr = prev
-            prev = ssp.parents[curr];
-            if(prev > num_nodes)
-                alpha[j]=0;
-                break;
-            end
-            beta[j] *= surv_probs[curr,prev]
-            if(prev == 0)
-                warn("Dijkstra's has a bug");
-            end
-        end
-        alpha[j] *= surv_probs[curr, 1]
-    end
-
-    lbs=zeros(num_nodes);
-    unreachable = 0.0;
-    for j = 1:num_nodes
-        if(alpha[j]*alpha[j] < p_r) # this node is impossible to reach
-            alpha[j] = 0.0;
-            unreachable+=1;
-        else
-            lbs[j] = p_r/beta[j]; 
-        end
-    end 
-    
-#    Graphs.plot(G)
-
-    prob = pr_problem(num_nodes, prob_constr, surv_probs, alpha, lbs, p_r, G, edge_weights,is_euclidean, xvals,yvals)
+    unreachable = change_lattice_pr(prob, p_r)
     return prob, unreachable
 end
 

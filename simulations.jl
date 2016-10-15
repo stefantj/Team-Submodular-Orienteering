@@ -4,10 +4,6 @@ include("flags.jl");
 println("FLAG_USE_GUROBI: $FLAG_USE_GUROBI");
 println("FLAG_USE_SEABORN: $FLAG_USE_SEABORN");
 
-
-
-
-
 # File contains solution libraries
 include("solvers.jl");
 
@@ -18,9 +14,80 @@ include("problems.jl")
 include("PrettyPlots.jl");
 
 println("Functions in this file:")
-println(" Compare_naive: Runs comparison with naive baseline algorithm.");
+println(" test_scaling:  Runs both optimal and heuristic algorithms. ");
+println(" compare_naive: Runs comparison with naive baseline algorithm.");
 println(" perf_vs_pr:    Runs simulation to judge performance versus p_r");
 println(" opt_vs_heur:   Runs comparison with brute-forced optimal paths on hexagon problem");
+
+function test_scaling(max_prob_size, num_iters)
+    initialize_plots();
+
+    # Problems:
+    n_steps = 20;
+    nvals = [collect(3:10),collect(15:5:50)]
+    n_steps = size(nvals,1);
+
+    K = 3;
+
+    pr = 0.3;
+
+    opt_times = zeros(K, n_steps, num_iters);
+    heur_times = zeros(K, n_steps, num_iters);
+    opt_value = zeros(K, n_steps, num_iters)
+    heur_ratio = zeros(K, n_steps, num_iters);
+    heur_value = zeros(K, n_steps, num_iters);
+    successes  = zeros(n_steps,num_iters);
+
+    skip_opt = false; # once the optimal times out, don't try again
+
+    for iter = 1:num_iters
+        println("Iteration $iter");
+        # Generate problem:
+        n_ind = 0;
+        for n in nvals
+            n_ind += 1;
+            println("Problem size: $n x $n");
+            prob, unreach = euclidean_problem(n, pr,0.11);
+            # Solve using optimal:
+            if(!skip_opt)
+                v_g, vu, time_g = greedy_solve(prob, K);
+            end
+            # Solve using heuristic:
+            v_h, vuh, time_h = greedy_solve_heuristic(prob, K);
+            
+            # Store data:
+            if(!skip_opt &&  v_g[end] == v_g[end]) # Code for is not NaN
+                opt_times[:,n_ind,iter] = vec(time_g);
+                opt_value[:,n_ind,iter] = vec(v_g);
+            else
+                skip_opt = true
+            end
+            if(v_h[end] == v_h[end])
+                heur_times[:,n_ind,iter] = vec(time_h)
+                heur_value[:,n_ind,iter] = vec(v_h);
+            end
+            heur_ratio[:,n_ind,iter] = vec(heur_value[:,n_ind,iter]./opt_value[:,n_ind,iter]);
+            save("test_scaling.jld", "nvals", nvals, "n_steps",n_steps,"K",K,"pr",pr,"opt_times",opt_times,"heur_times",heur_times,"opt_value",opt_value,"heur_ratio",heur_ratio,"heur_value",heur_value,"iter",iter);
+            
+            figure(18); clf();
+            subplot(2,1,1);
+            opt_sumtimes = sum(opt_times,1);
+            heur_sumtimes = sum(heur_times,1);
+            PyPlot.semilogy(vec(nvals[1:n_ind].^2), vec(opt_sumtimes[1,1:n_ind,1]));
+            PyPlot.semilogy(vec(nvals[1:n_ind].^2), vec(heur_sumtimes[1,1:n_ind,1]));
+            xlabel("Problem size");
+            ylabel("Computation time");
+            legend(["MIP","Heuristic"]);
+
+            subplot(2,1,2);
+            PyPlot.plot(vec(nvals[1:n_ind].^2),vec(heur_ratio[K,1:n_ind,1]));
+            ylim([-0.1,1.1]);
+            xlabel("Problem size");
+            ylabel("Fraction of MIP");
+            
+        end
+    end
+end
 
 
 function compare_naive(num_iters)

@@ -25,13 +25,13 @@ else
             # Check whether anything helpful happened:
             if( sum(values[path]) < 0.01)
                 valuable_nodes = find(values .>0.0);
-                path = greedy_dijkstra(prob, valuable_nodes, values[valuable_nodes]);
+                path = greedy_dijkstra(prob, valuable_nodes, values);
             end
             return path;
         else
 #            warn("Heuristic not equipped for non-euclidean problems. Interface needs to be updated");
             valuable_nodes = find(values .>0.0);
-            path = greedy_dijkstra(prob, valuable_nodes, values[valuable_nodes]);
+            path = greedy_dijkstra(prob, valuable_nodes, values);
             return path;
         end
     end
@@ -166,6 +166,58 @@ function greedy_solve(prob, num_agents)
     return obj_vals, ubvals, times
 end
 
+function greedy_solve_heuristic(prob, num_agents)
+    obj_vals = zeros(num_agents);
+    ubvals = zeros(num_agents);
+    num_nodes = prob.num_nodes
+    unvisited_prob = zeros(num_nodes) # put into logarithms
+    unvisited_prob[1] = -Inf;
+    times = zeros(num_agents);
+    for agent=1:num_agents
+        println("Agent $agent planning...");
+        tic();
+        # Form reward vector:
+        rewards = prob.alphas.*exp(unvisited_prob);
+        # Solve OP
+
+        path = [];
+
+        if(prob.is_euclidean)
+            path = solve_heuristic_op(rewards, prob.x_points,prob.y_points, -log(prob.p_r), 1, prob.num_nodes);
+            # Check whether anything helpful happened:
+            if( sum(rewards[path]) < 0.01)
+                valuable_nodes = find(rewards.>0.0);
+                path = greedy_dijkstra(prob, valuable_nodes, rewards);
+            end
+        else
+#            warn("Heuristic not equipped for non-euclidean problems. Interface needs to be updated");
+            valuable_nodes = find(values .>0.0);
+            path = greedy_dijkstra(prob, valuable_nodes, values);
+        end
+
+        times[agent] += toq();
+        if(isempty(path))
+            println("Solver failed.");
+            return obj_vals, ubvals, times#[NaN],[NaN],[NaN]
+        else
+            tic();
+            ubvals[agent] = sum(rewards[path[1:end-1]])
+            if(agent > 1)
+                ubvals[agent] += ubvals[agent-1]
+            end
+            # Compute survival probability at each node in path
+            alive_prob = 1.0;
+            for k=2:size(path,1)
+                alive_prob*= prob.surv_probs[path[k-1],path[k]]
+                unvisited_prob[path[k]] += log(1-alive_prob);
+            end
+            obj_vals[agent] = prob.num_nodes-1 - sum(exp(unvisited_prob[1:prob.num_nodes-1]));
+            times[agent] += toq();
+        end
+    end
+    return obj_vals, ubvals, times
+end
+
 # Solve the dual version of this problem:
 # 
 function dual_solve(prob, num_agents)
@@ -221,7 +273,7 @@ fill_between(1:prob.num_nodes, exp(log(prob.p_r)/9)*ones(prob.num_nodes), exp(lo
             legend(["Max","Bud","Bud/Max","Max/Bud"]);
             
             
-            path = greedy_dijkstra(prob, valuable_nodes, rewards[valuable_nodes]);
+            path = greedy_dijkstra(prob, valuable_nodes, rewards);
             println("Path chosen has value", sum(rewards[path]));
         end
     
@@ -254,10 +306,18 @@ end
 function greedy_dijkstra(prob, nodes, values)
     nodes_not_in_path = deepcopy(nodes); 
 
-    # Find the best marginal value point and add to our path:
-    end_pt = nodes[indmax( values./prob.alphas[nodes] )]
-    println("Starting with point ", end_pt);
+    infeas = find(prob.alphas .== 0);
+   
+    nodes_not_in_path = setdiff(nodes_not_in_path, [1;prob.num_nodes;infeas]);
+    if(isempty(nodes_not_in_path))
+        println("Given empty set to work with!");
+        return []
+    end
 
+    # Find the best marginal value point and add to our path:
+    end_pt = nodes_not_in_path[indmax( values[nodes_not_in_path]./prob.alphas[nodes_not_in_path] )]
+
+println("Start point: $end_pt. Num nodes: ", prob.num_nodes);
     # Form path:
     path = prob.alpha_paths[end_pt];
 
@@ -273,35 +333,146 @@ function greedy_dijkstra(prob, nodes, values)
     budget_used = -log(prob.alphas[end_pt]);
     slack = -log(prob.p_r)  - (budget_used + -log(prob.p_r/prob.lbs[end_pt]));
 
-    while(slack > 0.001 && !isempty(nodes_not_in_path))
+## STEP 1: Fill in shortest paths greedily
+    while(slack > 0.0 && !isempty(nodes_not_in_path))
         ssp = dijkstra_shortest_paths(prob.G, prob.edge_probs+noGo, path[end]);
+        # Assuming that start = end
 
         ssp.dists[path[end]] += 1000000; # Mark self as not an option
-        nb = indmin(ssp.dists[nodes_not_in_path]); # Find closest neighbor
+        for nb in nodes_not_in_path
+#        nb = indmin(ssp.dists[nodes_not_in_path]); # Find closest neighbor
 
-        # Now check if feasible:
-        slack = -log(prob.p_r) - (budget_used + ssp.dists[nb] -log(prob.p_r/prob.lbs[nb]))
-
-        if(slack > 0)
+            # Now check if feasible: construct path and compute shortest _path_ back:
+            tmp_nogo = zeros(size(prob.edge_probs,1));
             # construct path to nb and update
             tmp_path = [nb];
             prev = ssp.parents[nb];
             while(prev != path[end] && prev > 0 && prev <= prob.num_nodes)
                 prepend!(tmp_path, [prev]);
                 prev = ssp.parents[prev];
+                tmp_nogo[prob.edge_inds[tmp_path[1],tmp_path[2]]] = 10000;
+                tmp_nogo[prob.edge_inds[tmp_path[2],tmp_path[1]]] = 10000;
             end
-            path = [path; tmp_path]
-            budget_used += ssp.dists[nb];
-            # Update state:
-            nodes_not_in_path = setdiff(nodes_not_in_path, path);
+            if(size(tmp_path,1)>=2)
+                tmp_nogo[prob.edge_inds[tmp_path[1],tmp_path[2]]] = 10000;
+                tmp_nogo[prob.edge_inds[tmp_path[2],tmp_path[1]]] = 10000;
+            end
+            sspB = dijkstra_shortest_paths(prob.G, prob.edge_probs+noGo+tmp_nogo, path[end]);
+
+            slack = -log(prob.p_r) - (budget_used + ssp.dists[nb] +sspB.dists[1])
+
+            if(slack > 0)
+                path = [path; tmp_path]
+                budget_used += ssp.dists[nb];
+                # Update state:
+                nodes_not_in_path = setdiff(nodes_not_in_path, path);
+                path = unique(path);
+                for k=2:size(path,1)
+                    if(path[k-1] == 0 || path[k] == 0)
+                        println("Error: path has zero element!\n$path");
+                    end
+                    if(prob.edge_inds[path[k-1],path[k]] !=0)
+                        noGo[prob.edge_inds[path[k-1],path[k]]] = 1000000;
+                    else
+                        println("No edge between nodes $(path[k-1]) and $(path[k])");
+                    end
+                    if(prob.edge_inds[path[k],path[k-1]] !=0)
+                        noGo[prob.edge_inds[path[k],path[k-1]]] = 1000000;
+                    else
+                        println("No edge between nodes $(path[k]) and $(path[k-1])");
+                    end
+                end
+                break;
+            end
+        end
+    end
+
+    # Recompute slack:
+    ssp = dijkstra_shortest_paths(prob.G, prob.edge_probs+noGo, path[end]);
+    slack = -log(prob.p_r)  - (budget_used + ssp.dists[1]);
+## STEP 2: Try to add single points:
+    println("Step 2!");
+    while(slack > 0.0)   
+        n_ind = 0;
+        progress = false;
+        for n in nodes_not_in_path
+            n_ind += 1;
+            # Compute shortest path object:
+            ssp = dijkstra_shortest_paths(prob.G, prob.edge_probs+noGo, n)
+            # Search for cheapest insertion:
+            insertion_feasible = false;
+            best_cost = slack;
+            best_path=[];
+            best_k = -1;
             for k=2:size(path,1)
-                noGo[prob.edge_inds[path[k-1],path[k]]] = 1000000;
-                noGo[prob.edge_inds[path[k],path[k-1]]] = 1000000;
+                # Cost:
+                cost = ssp.dists[path[k-1]]; # Cost to node
+                if(cost < best_cost)
+                    # Now check cost from:
+                    # extract path
+                    tmp_nogo = zeros(size(prob.edge_probs,1));
+                    # construct path to nb and update
+                    tmp_path = [path[k-1]];
+                    prev = ssp.parents[path[k-1]];
+                    while(prev != path[end] && prev > 0 && prev <= prob.num_nodes)
+                        tmp_nogo[prob.edge_inds[tmp_path[1],tmp_path[2]]] = 10000;
+                        tmp_nogo[prob.edge_inds[tmp_path[2],tmp_path[1]]] = 10000;
+                        prepend!(tmp_path, [prev]);
+                        prev = ssp.parents[prev];
+                    end
+                    tmp_nogo[prob.edge_inds[tmp_path[1],tmp_path[2]]] = 10000;
+                    tmp_nogo[prob.edge_inds[tmp_path[2],tmp_path[1]]] = 10000;
+                    # Check cost:
+                    sspB = dijkstra_shortest_paths(prob.G, prob.edge_probs+noGo+tmp_nogo, path[k]);
+
+                    slack = -log(prob.p_r) - (budget_used + ssp.dists[nb] +sspB.dists[n])
+                    cost += ssp.dists[n];
+                    if(slack > 0 && cost < best_cost)
+                        best_cost = cost;
+                        best_k = k;
+                        # construct best path:
+                        prev = ssp.parents[n];
+                        while(prev != path[k])
+                            push!(tmp_path,prev);
+                            prev = ssp.parents[prev];
+                        end
+                        best_path = deepcopy(tmp_path);
+                    end
+                end    
             end
-        else # Means no viable neighbors left
+            # If feasible insertion, do it
+            if(best_k > 0) 
+                progress = true;
+                path = [path[1:best_k-1]; best_path; path[best_k:end]];
+                budget_used += best_cost;
+                path = unique(path);
+                for k=2:size(path,1)
+                    if(path[k-1] == 0 || path[k] == 0)
+                        println("Error: path has zero element!\n$path");
+                    end
+                    if(prob.edge_inds[path[k-1],path[k]] !=0)
+                        noGo[prob.edge_inds[path[k-1],path[k]]] = 1000000;
+                    else
+                        println("No edge between nodes $(path[k-1]) and $(path[k])");
+                    end
+                    if(prob.edge_inds[path[k],path[k-1]] !=0)
+                        noGo[prob.edge_inds[path[k],path[k-1]]] = 1000000;
+                    else
+                        println("No edge between nodes $(path[k]) and $(path[k-1])");
+                    end
+                end
+                ssp = dijkstra_shortest_paths(prob.G, prob.edge_probs + noGo, path[end]);
+                slack = -log(prob.p_r) - (budget_used + ssp.dists[1]);
+                break;
+            end
+
+        end
+        println("Slack: $slack");
+        if(!progress)
             break;
         end
     end
+    println("Path has slack $slack");
     # Complete path and return:
     if(path[end] != 1)
         path = [path[1:end-1]; prob.beta_paths[path[end]]]

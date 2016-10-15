@@ -96,7 +96,7 @@ function change_lattice_pr(prob::pr_problem, p_r)
         end
     end 
 
-    println("Problem has $unreachable unreachable nodes");
+    println("Problem has $unreachable unreachable nodes ($(float(unreachable)/float(prob.num_nodes))");
     prob.p_r = p_r;
     prob.lbs = lbs;
     prob.alphas = alpha;
@@ -177,7 +177,7 @@ function lattice_problem(num_nodes_per_side, p_r)
     return prob, unreachable
 end
 
-function euclidean_problem(num_nodes_per_side, p_r)
+function euclidean_problem(num_nodes_per_side, p_r,surv_scaling=0.25)
     num_nodes = (num_nodes_per_side^2 + 1)
     surv_probs = 0.0001*ones(num_nodes, num_nodes)
 
@@ -185,9 +185,6 @@ function euclidean_problem(num_nodes_per_side, p_r)
     locations = linspace(0,1,num_nodes_per_side);
 
     prob_constr = 0.29*ones(num_nodes);
-
-    # smaller means higher survival
-    surv_scaling = 0.24;
 
     G = simple_graph(num_nodes)
     G.is_directed = true
@@ -220,11 +217,11 @@ function euclidean_problem(num_nodes_per_side, p_r)
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, i, j));
                 edge_indices[i,j] = edge_index;
-                edge_weights = [edge_weights; surv_probs[i,j]/sqrt(2)];
+                edge_weights = [edge_weights; -log(surv_probs[i,j])/sqrt(2)];
                 edge_index+=1;
                 add_edge!(G, Edge(edge_index, j, i));
                 edge_indices[j,i] = edge_index;
-                edge_weights = [edge_weights; surv_probs[i,j]/sqrt(2)];
+                edge_weights = [edge_weights; -log(surv_probs[i,j])/sqrt(2)];
             end
         end
     end

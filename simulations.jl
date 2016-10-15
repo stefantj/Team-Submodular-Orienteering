@@ -47,11 +47,15 @@ function compare_naive(num_iters)
 
     for i=1:num_iters
         psize=8
-        prob,unreach[i] = euclidean_problem(psize,0.8)
+        pr = 0.8;
+#        prob,unreach[i] = lattice_problem(psize,0.8)
+        prob,unreach[i] = euclidean_problem(psize,pr)
 
         while(unreach[i] > 1)
-            println("Re-starting problem");
-            prob,unreach[i] = euclidean_problem(psize,0.8)
+#            prob,unreach[i] = lattice_problem(psize,0.8)
+            pr *= 0.95;
+            println("Pr = $pr");
+            prob,unreach[i] = euclidean_problem(psize,pr)
         end
 
         # Account for solutions the OP will just miss.
@@ -496,9 +500,9 @@ end
 # Run the dual problem simulation
 
 function simulate_dual(num_iters)
-    psize = 6;
+    psize = 7;
     pr_steps = 30;
-    Kmax = 50;
+    Kmax = 70;
     pr_min = .1
     pr_max = 0.96
 

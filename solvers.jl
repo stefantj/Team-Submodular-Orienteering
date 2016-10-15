@@ -21,10 +21,18 @@ if(FLAG_USE_GUROBI)
 else
     function solve_OP(values, prob, B, n_s, n_t)
         if(prob.is_euclidean)
-            return solve_heuristic_op(values, prob.x_points,prob.y_points, B, n_s,n_t);
+            path = solve_heuristic_op(values, prob.x_points,prob.y_points, B, n_s,n_t);
+            # Check whether anything helpful happened:
+            if( sum(values[path]) < 0.01)
+                valuable_nodes = find(values .>0.0);
+                path = greedy_dijkstra(prob, valuable_nodes, values[valuable_nodes]);
+            end
+            return path;
         else
-            warn("Heuristic not equipped for non-euclidean problems. Interface needs to be updated");
-            return [];
+#            warn("Heuristic not equipped for non-euclidean problems. Interface needs to be updated");
+            valuable_nodes = find(values .>0.0);
+            path = greedy_dijkstra(prob, valuable_nodes, values[valuable_nodes]);
+            return path;
         end
     end
 end
@@ -39,26 +47,12 @@ function randomSurvivors(prob, num_agents)
     unvisit_prob = zeros(prob.num_nodes)
     unvisit_prob[1] =-Inf;
 
-    # Form shortest path graph and solve to get best path object
-    ssp = Graphs.dijkstra_shortest_paths(prob.G, (prob.edge_probs), prob.num_nodes); 
-
-    beta = ones(prob.num_nodes)
-
-    # Betas:
-    for k=1:prob.num_nodes-1
-        curr = k;
-        prev = ssp.parents[curr];
-        beta[k] *= prob.surv_probs[curr,prev]
-        while(prev != prob.num_nodes)
-            curr = prev;
-            prev = ssp.parents[curr];
-            beta[k] *= prob.surv_probs[curr,prev]
-        end
-    end
+    beta = prob.p_r./prob.lbs
 
     paths = zeros(prob.num_nodes,num_agents);
 
     for agent = 1:num_agents
+
         alive_prob = 1.0;
         curr_node = 1;
         time=1;
@@ -66,6 +60,7 @@ function randomSurvivors(prob, num_agents)
         nodes_left = collect(2:prob.num_nodes);
         # If budget left, take random, feasible edge:
         while(alive_prob*beta[curr_node] > prob.p_r)
+
             # Look for feasible node to move to:
             best_node = -1;
             best_val  = -1;
@@ -99,13 +94,15 @@ function randomSurvivors(prob, num_agents)
             end
         end
         # Take best path home
-        while(curr_node!=prob.num_nodes)
-            next_node = ssp.parents[curr_node];
-            alive_prob *= prob.surv_probs[curr_node, next_node];
-            unvisit_prob[next_node] += log(1-alive_prob);
-            curr_node = next_node
-            time+=1;
-            paths[time,agent] = curr_node;
+        println("Curr node = $curr_node");
+        if(curr_node != 1 && curr_node != prob.num_nodes)
+            for next_node in (prob.beta_paths[curr_node])[2:end-1]
+                alive_prob *= prob.surv_probs[curr_node, next_node];
+                unvisit_prob[next_node] += log(1-alive_prob);
+                curr_node = next_node
+                time+=1;
+                paths[time,agent] = curr_node;
+            end
         end
         obj_vals[agent] = prob.num_nodes-1 - sum(exp(unvisit_prob[1:prob.num_nodes-1]))
     end
@@ -179,13 +176,14 @@ function dual_solve(prob, num_agents)
     unvisited_prob[1] = -Inf;
     times = zeros(num_agents);
     for agent=1:num_agents+1
-        println("Agent $agent planning...");
         tic();
         # Form reward vector:
         rewards = zeros(num_nodes)
         slack = zeros(num_nodes)
         slack = prob.prob_constr - (1.0-exp(unvisited_prob));
         rewards = prob.alphas.*max(slack,0.0)
+        println("Rewards:", rewards);
+        println("Agent $agent planning...", sum(rewards), " reward left");
 
         # Check if we've already solved the problem:
         if(maximum(rewards).< 0.0001)
@@ -199,6 +197,34 @@ function dual_solve(prob, num_agents)
         # Solve OP
         path = solve_OP(rewards, prob, -log(prob.p_r), 1, prob.num_nodes)
         times[agent] += toq();
+
+        val = sum(rewards[path]);
+        if( val <= 0.001 )
+            println("path is $path");
+            warn("Using fake SSP approach");
+            # Use Dijkstra's to plan to closest non-zero neighbor:
+            valuable_nodes = find(rewards.>0.0);
+
+
+# Illustrate which nodes are missing:
+figure(5);clf(); PyPlot.plot(1:prob.num_nodes, maximum(prob.alphas[valuable_nodes])*ones(prob.num_nodes)); scatter(1:size(prob.alphas,1), prob.alphas, alpha=0.3); scatter(valuable_nodes,prob.alphas[valuable_nodes])
+fill_between(1:prob.num_nodes, exp(log(prob.p_r)/9)*ones(prob.num_nodes), exp(log(prob.p_r)/7)*ones(prob.num_nodes), alpha=0.3);
+# Compare budgets:
+            bud_missing_max = -log(maximum(prob.alphas[valuable_nodes]));
+            bud_missing_min = -log(minimum(prob.alphas[valuable_nodes]));
+            bud = -log(prob.p_r);
+            figure(6); clf();
+            PyPlot.plot(1:2, bud_missing_max*[1,1]);
+            PyPlot.plot(1:2, bud*[1,1]);
+            PyPlot.plot(1:2, (bud/bud_missing_max)*[1,1]);
+            PyPlot.plot(1:2, (bud_missing_max/bud)*[1,1]);
+            legend(["Max","Bud","Bud/Max","Max/Bud"]);
+            
+            
+            path = greedy_dijkstra(prob, valuable_nodes, rewards[valuable_nodes]);
+            println("Path chosen has value", sum(rewards[path]));
+        end
+    
         if(isempty(path))
             println("Solver failed.");
             return [NaN],[NaN],[NaN]
@@ -221,5 +247,65 @@ function dual_solve(prob, num_agents)
 
     # Failure...
     return obj_vals, ubvals, times, -1
+end
+
+
+# Used as a backup heuristic. Really quite terrible. Hopes that the nodes list is small.
+function greedy_dijkstra(prob, nodes, values)
+    nodes_not_in_path = deepcopy(nodes); 
+
+    # Find the best marginal value point and add to our path:
+    end_pt = nodes[indmax( values./prob.alphas[nodes] )]
+    println("Starting with point ", end_pt);
+
+    # Form path:
+    path = prob.alpha_paths[end_pt];
+
+    # Update state:
+    nodes_not_in_path = setdiff(nodes_not_in_path, path);
+    noGo = zeros(size(prob.edge_probs,1));
+    for k=2:size(path,1)
+        noGo[prob.edge_inds[path[k-1],path[k]]] = 1000000;
+        noGo[prob.edge_inds[path[k],path[k-1]]] = 1000000;
+    end
+
+    # Cost variables:
+    budget_used = -log(prob.alphas[end_pt]);
+    slack = -log(prob.p_r)  - (budget_used + -log(prob.p_r/prob.lbs[end_pt]));
+
+    while(slack > 0.001 && !isempty(nodes_not_in_path))
+        ssp = dijkstra_shortest_paths(prob.G, prob.edge_probs+noGo, path[end]);
+
+        ssp.dists[path[end]] += 1000000; # Mark self as not an option
+        nb = indmin(ssp.dists[nodes_not_in_path]); # Find closest neighbor
+
+        # Now check if feasible:
+        slack = -log(prob.p_r) - (budget_used + ssp.dists[nb] -log(prob.p_r/prob.lbs[nb]))
+
+        if(slack > 0)
+            # construct path to nb and update
+            tmp_path = [nb];
+            prev = ssp.parents[nb];
+            while(prev != path[end] && prev > 0 && prev <= prob.num_nodes)
+                prepend!(tmp_path, [prev]);
+                prev = ssp.parents[prev];
+            end
+            path = [path; tmp_path]
+            budget_used += ssp.dists[nb];
+            # Update state:
+            nodes_not_in_path = setdiff(nodes_not_in_path, path);
+            for k=2:size(path,1)
+                noGo[prob.edge_inds[path[k-1],path[k]]] = 1000000;
+                noGo[prob.edge_inds[path[k],path[k-1]]] = 1000000;
+            end
+        else # Means no viable neighbors left
+            break;
+        end
+    end
+    # Complete path and return:
+    if(path[end] != 1)
+        path = [path[1:end-1]; prob.beta_paths[path[end]]]
+    end
+    return path
 end
 

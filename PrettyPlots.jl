@@ -187,7 +187,7 @@ function plot_perf_vs_pr()
         for k=1:size(D,3)
             ratios = vec(D[p,good_runs,k]./U[p,good_runs,k]);
 if(FLAG_USE_SEABORN)
-            seaborn.distplot(ratios)
+#            seaborn.distplot(ratios)
 end
             mean_vals[p,k] = mean( ratios)
             std_vals[p,k]  = sqrt(var(ratios));

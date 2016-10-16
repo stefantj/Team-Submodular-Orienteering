@@ -85,7 +85,7 @@ function change_lattice_pr(prob::pr_problem, p_r)
         beta[j] *= prob.surv_probs[curr, j];
     end
     lbs=zeros(num_nodes);
-    unreachable = 0.0;
+    unreachable = 0;
     for j = 1:num_nodes
         if(alpha[j]*beta[j] < p_r) # this node is impossible to reach
             alpha[j] = 0.0;

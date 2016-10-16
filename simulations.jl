@@ -24,10 +24,10 @@ function test_scaling(max_prob_size, num_iters)
 
     # Problems:
     n_steps = 20;
-    nvals = [collect(3:10),collect(15:5:50)]
+    nvals = [collect(3:11),collect(15:5:50)]
     n_steps = size(nvals,1);
 
-    K = 3;
+    K = 15;
 
     pr = 0.3;
 
@@ -37,8 +37,16 @@ function test_scaling(max_prob_size, num_iters)
     heur_ratio = zeros(K, n_steps, num_iters);
     heur_value = zeros(K, n_steps, num_iters);
     successes  = zeros(n_steps,num_iters);
+    unreach = zeros(n_steps, num_iters);
 
     skip_opt = false; # once the optimal times out, don't try again
+
+    # Run once to get rid of compile time:
+    prob, ur = euclidean_problem(3, pr, 0.11);
+    v_g, vu, time_g = greedy_solve(prob, K);
+    v_h, vuh, time_h = greedy_solve_heuristic(prob, K);
+    
+
 
     for iter = 1:num_iters
         println("Iteration $iter");
@@ -47,7 +55,7 @@ function test_scaling(max_prob_size, num_iters)
         for n in nvals
             n_ind += 1;
             println("Problem size: $n x $n");
-            prob, unreach = euclidean_problem(n, pr,0.11);
+            prob, unreach[n_ind,iter] = euclidean_problem(n, pr,0.11);
             # Solve using optimal:
             if(!skip_opt)
                 v_g, vu, time_g = greedy_solve(prob, K);
@@ -67,7 +75,7 @@ function test_scaling(max_prob_size, num_iters)
                 heur_value[:,n_ind,iter] = vec(v_h);
             end
             heur_ratio[:,n_ind,iter] = vec(heur_value[:,n_ind,iter]./opt_value[:,n_ind,iter]);
-            save("test_scaling.jld", "nvals", nvals, "n_steps",n_steps,"K",K,"pr",pr,"opt_times",opt_times,"heur_times",heur_times,"opt_value",opt_value,"heur_ratio",heur_ratio,"heur_value",heur_value,"iter",iter);
+            save("test_scaling.jld", "nvals", nvals, "n_ind",n_ind,"K",K,"pr",pr,"opt_times",opt_times,"heur_times",heur_times,"opt_value",opt_value,"heur_ratio",heur_ratio,"heur_value",heur_value,"iter",iter, "unreach",unreach);
             
             figure(18); clf();
             subplot(2,1,1);

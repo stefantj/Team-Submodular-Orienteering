@@ -621,7 +621,9 @@ function simulate_dual(num_iters)
             end
             println("Max time: ", maxtime);
             save("dual_feasibility.jld", "feas_grid", feas_grid, "visit_probs", visit_probs, "maxtime", maxtime, "optval",optval,"opt_k",opt_k,"opt_pr",opt_pr, "pr_vals",pr_vals,"Kmax",Kmax);
+if(FLAG_USE_SEABORN)
             plot_dual_data();            
+end
         end
     end
 end

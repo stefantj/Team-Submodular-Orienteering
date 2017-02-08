@@ -111,14 +111,14 @@ function randomSurvivors(prob, num_agents)
 end
 
 
-function solve_heuristic_op(values, xvals, yvals, budget, n_s, n_t)
+function solve_heuristic_op(values, xvals, yvals, budget, surv_probs, n_s, n_t)
     # TODO: Fix
     if(n_s != 1 || n_t != size(values,1))
         warn("Heuristic requires n_s = 1 and n_t = end");
     end
     
     # write the problem to file:
-    write_op_problem(xvals,yvals, values, budget)
+    write_op_problem(xvals,yvals, values, budget, surv_probs)
 
     # Execute external program:
     run(`python ILS/TOPTW/main.py 1`);

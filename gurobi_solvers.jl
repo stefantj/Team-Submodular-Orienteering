@@ -65,7 +65,7 @@ end
 # Only works for euclidean problems
 # Uses the recent edge based formulation from Imdat 2016
 function solve_OP_edges(values, distances, B, n_s, n_t)
-    warn("Solving OP assuming euclidean distance");
+#    warn("Solving OP assuming euclidean distance");
     N = size(values,1);
     without_start = [1:n_s-1; n_s+1:N];
     without_stop = [1:n_t-1; n_t+1:N];
@@ -116,7 +116,7 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
         end
     else 
         path = [n_s]
-        x_sol = getValue(x);
+        x_sol = round(Int64, getValue(x));
         curr = findfirst(x_sol[n_s,:]);
         if(length(curr) > 0)
             while(curr[1] != n_t)

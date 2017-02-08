@@ -83,7 +83,16 @@ function piracy_problem(p_r)
     return prob, unreachable
 end
 
-
+# Try to make types less picky
+function set_visit_constr(prob::pr_problem, pvisit::Float64)
+    return set_visit_constr(prob, pvisit*ones(prob.num_nodes));
+end
+function set_visit_constr(prob::pr_problem, pvisit)
+    return set_visit_constr(prob, vec(pvisit))
+end
+function set_visit_constr(prob::pr_problem, pvisit::Vector{Float64})
+    prob.prob_constr = deepcopy(pvisit);
+end
 
 
 

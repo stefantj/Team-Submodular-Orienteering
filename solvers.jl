@@ -218,8 +218,115 @@ function greedy_solve_heuristic(prob, num_agents)
     return obj_vals, ubvals, times
 end
 
+
+function rsc_solve(prob, max_num_agents)
+    # Cost-benefit greedy algorithm with uniform costs is the same as the greedy algorithm.
+    # Difference between this and the primal problem is the objective function is truncated.
+
+    delta_g_0 = 0;                                  # Amount of constraint satisfied on first iteration
+    delta_g_K = 0;                                  # Amount of constraint satisfied by kth agent
+    delta_g_Km1 = 0;
+    K = 0;
+    num_nodes = prob.num_nodes;
+
+    bounds = zeros(max_num_agents);
+
+    # Log-transformed non-visit probabilities
+    unvisited_prob = zeros(num_nodes);
+    unvisited_prob[1] = -Inf;
+    unmet_constraints = ones(num_nodes);
+    unmet_constraints[1] = 0;
+
+    s_km1 = zeros(num_nodes);
+    s_k = zeros(num_nodes);
+
+    naive_bound = 1.0;
+    for n = 1:num_nodes
+        punvisit = 1.0;
+        for k=1:max_num_agents 
+            punvisit *= (1-prob.alphas[n]);
+            if(1 - punvisit > prob.prob_constr[n]) # Means we've just become feasible
+                if(k > naive_bound)
+                    naive_bound = k
+                end
+                break;
+            end 
+        end 
+    end 
+
+    # Run cost-benefit greedy algorithm:
+    for agent=1:max_num_agents
+        K+=1
+        print("Agent $agent planning...")
+        # Form reward vector:
+        #         nonzero if unmet constraint    slack left to fill       upper bound on improvement
+        rewards = min(max(prob.prob_constr - 1+exp(unvisited_prob),0), prob.alphas.*exp(unvisited_prob))
+#        println("Slack: ", sum(rewards));
+        if(sum(rewards) == 0)
+            println("Zero slack - breaking.");
+            println("Number of `unmet constraints' = ", sum(unmet_constraints), "at positions", find(unmet_constraints))
+            break;
+        end
+        if(agent > 1)
+            delta_g_Km1 = delta_g_K
+            s_km1 = s_k;
+        end
+
+        # Solve OP: 
+        path = solve_OP(rewards, prob, -log(prob.p_r), 1, prob.num_nodes);
+        if(isempty(path))
+            println("Solver failed")
+            break;
+        end
+        
+        # Update survival probabilities
+        alive_prob = 1.0;
+        delta_g_K = 0;
+        for k=2:size(path,1)
+            alive_prob*= prob.surv_probs[path[k-1],path[k]];
+            # Compute delta_g
+            delta_g_K += unmet_constraints[path[k]]*min(prob.prob_constr[path[k]] - 1+exp(unvisited_prob[path[k]]), alive_prob*exp(unvisited_prob[path[k]]));
+            # Update cumulative unvisit prob
+            unvisited_prob[path[k]]+=log(1-alive_prob);
+            if(1-exp(unvisited_prob[path[k]]) >= prob.prob_constr[path[k]])
+                unmet_constraints[path[k]] = 0;
+            end
+        end 
+
+        s_k = sum(max(prob.prob_constr-1+exp(unvisited_prob),0));
+
+        if(agent == 1)
+            delta_g_0 = delta_g_K
+        else
+            bounds[K] = ceil(K*prob.p_r/(1+log(delta_g_0/delta_g_K)))
+        end
+
+        if(maximum(unmet_constraints) == 0)
+            println("Constraints satisfied!");
+            break;
+        end
+    end
+
+    relaxed_approx = (1+log(delta_g_0/ delta_g_Km1))/prob.p_r
+    approx_fact = (1+log(delta_g_0/delta_g_K))/prob.p_r
+    worst_case_fact = (1 + log(sum(prob.prob_constr)/(prob.p_r*(1- maximum(prob.prob_constr)))))/prob.p_r
+    println("Our solution size: \t $K\nOnline bound: \t $(K/approx_fact)\nOffline bound:\t $(K/worst_case_fact)\nSimple bound:\t $naive_bound");
+    println("Online ratio:\t $approx_fact\nOffline ratio:\t $worst_case_fact\nSimple ratio: $(K/naive_bound)");
+
+
+    println("Relaxed problem:\nBound:\t $((K-1)/relaxed_approx)\nSlack: \t $s_km1\nRatio:\t$relaxed_approx");
+    println("Harder problem:\nBound\t $(K/approx_fact)\nSlack: \t$s_k");
+
+    println("Bounds: ", bounds);
+    return relaxed_approx, approx_fact, worst_case_fact, naive_bound, K
+end
+
+
+
+
+
 # Solve the dual version of this problem:
-# 
+# Note that this is an earlier attempt at solving the dual problem (not the one used for the paper)
 function dual_solve(prob, num_agents)
     obj_vals = zeros(num_agents);
     ubvals = zeros(num_agents);

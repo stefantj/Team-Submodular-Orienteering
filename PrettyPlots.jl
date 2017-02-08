@@ -329,3 +329,31 @@ function plot_dual_data()
     fig[:subplots_adjust](left=0.15)
 end
 
+function plot_scaling()
+    data = load("test_scaling.jld");
+    opt_times = data["opt_times"];
+    heur_times = data["heur_times"];
+    nvals = data["nvals"];
+    heur_ratio = data["heur_ratio"]
+    K = data["K"];
+
+    n_ind = size(nvals,1);
+
+
+    figure(18); clf();
+    subplot(2,1,1);
+    opt_sumtimes = sum(opt_times,1);
+    heur_sumtimes = sum(heur_times,1);
+    PyPlot.semilogy(vec(nvals[1:n_ind].^2), vec(opt_sumtimes[1,1:n_ind,1]));
+    PyPlot.semilogy(vec(nvals[1:n_ind].^2), vec(heur_sumtimes[1,1:n_ind,1]));
+    xlabel("Problem size");
+    ylabel("Computation time");
+    legend(["MIP","Heuristic"]);
+
+    subplot(2,1,2);
+    PyPlot.plot(vec(nvals[1:n_ind].^2),vec(heur_ratio[K,1:n_ind,1]));
+    ylim([-0.1,1.1]);
+    xlabel("Problem size");
+    ylabel("Fraction of MIP");
+
+end

@@ -90,9 +90,9 @@ function test_scaling(max_prob_size, num_iters)
     nvals = [collect(3:11),collect(15:5:50)]
     n_steps = size(nvals,1);
 
-    K = 15;
+    K = 3;
 
-    pr = 0.3;
+    pr = 0.5;
 
     opt_times = zeros(K, n_steps, num_iters);
     heur_times = zeros(K, n_steps, num_iters);

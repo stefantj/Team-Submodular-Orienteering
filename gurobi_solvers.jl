@@ -61,6 +61,101 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
     return path
 end
 
+# Solve double-path OP
+function solve_OP_general_2path(values, distances, B,  n_s, n_t)
+    # Formulate problem for Gurobi:
+    N = size(values,1);
+    without_start = [1:n_s-1; n_s+1:N];
+    without_stop = [1:n_t-1; n_t+1:N];
+    without_both  = intersect(without_start, without_stop);
+
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500));
+
+    # Indicator variables
+    @defVar(model, x1[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
+    @defVar(model, x2[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
+    @defVar(model, v1[1:N], Bin) # Nx1 binary variables - v1[i] == 1 means path 1 visits node i
+    @defVar(model, v2[1:N], Bin) # Nx1 binary variables - v1[i] == 1 means path 1 visits node i
+
+    @defVar(model, 2 <= u1[without_start] <= N, Int) # binary variable related to subtours
+    @defVar(model, 2 <= u2[without_start] <= N, Int) # binary variable related to subtours
+    # sum reward of visited nodes:
+    @setObjective(model, Max, sum{ values[i]*(v1[i] +v2[i] - v1[i]*v2[i]), i=without_stop})
+    # limit one child per parent
+    @addConstraint(model, sum{x1[n_s,j], j=without_start} == 1)
+    @addConstraint(model, sum{x1[i,n_t], i=without_stop} == 1)
+    # path constraints/no cycles
+    @addConstraint(model, connectivity1[k=without_both], sum{x1[i,k], i=1:N} == sum{x1[k,j], j=1:N})
+    @addConstraint(model, once1[k=1:N], sum{x1[k,j], j=1:N} <= 1)
+    @addConstraint(model, sum{ sum{distances[i,j]*x1[i,j], j=1:N}, i=1:N } <= B)
+    @addConstraint(model, nosubtour1[i=without_start,j=without_start], u1[i]-u1[j]+1 <= (N-1)*(1-x1[i,j]))
+    # limit one child per parent
+    @addConstraint(model, sum{x2[n_s,j], j=without_start} == 1)
+    @addConstraint(model, sum{x2[i,n_t], i=without_stop} == 1)
+    # path constraints/no cycles
+    @addConstraint(model, connectivity2[k=without_both], sum{x2[i,k], i=1:N} == sum{x2[k,j], j=1:N})
+    @addConstraint(model, once2[k=1:N], sum{x2[k,j], j=1:N} <= 1)
+    @addConstraint(model, sum{ sum{distances[i,j]*x2[i,j], j=1:N}, i=1:N } <= B)
+    @addConstraint(model, nosubtour2[i=without_start,j=without_start], u2[i]-u2[j]+1 <= (N-1)*(1-x2[i,j]))
+
+    @addConstraint(model, visits1[i=without_stop], v1[i] == sum{x1[i,j], j = 1:N});
+    @addConstraint(model, visits2[i=without_stop], v2[i] == sum{x2[i,j], j = 1:N});
+
+    if(n_s != n_t)
+        @addConstraint(model, sum{x1[n_t,i],i=1:N}==0)
+        @addConstraint(model, sum{x2[n_t,i],i=1:N}==0)
+    end
+
+    path1 = [];
+    path2 = [];
+    status = solve(model)
+    println("Status: $status")
+    if status != :Optimal
+        if(status==:UserLimit)
+            warn("Time limit hit");
+        elseif(status==:Infeasible||status==:infeasible)
+            return [1];    # Stupid path
+        else
+            warn("Not solved to optimality: \n")
+        end
+    else 
+
+        print("Assembling path 1: ")
+        path1 = [n_s]
+        x_sol = round(Int64,getvalue(x1));
+        curr = findfirst(x_sol[n_s,:]);
+        if(length(curr) > 0)
+            while(curr[1] != n_t)
+                path1 = [path1; curr]
+                curr = findfirst(x_sol[curr,:]);
+            end
+            path1 = [path1; curr]
+        else
+            println("!")
+        end
+        println(path1);
+
+
+        print("Assembling path 2: ")
+        path2 = [n_s]
+        x_sol = round(Int64,getvalue(x2));
+        curr = findfirst(x_sol[n_s,:]);
+        if(length(curr) > 0)
+            while(curr[1] != n_t)
+                path2 = [path2; curr]
+                curr = findfirst(x_sol[curr,:]);
+            end
+            path2 = [path2; curr]
+        else
+            println("!")
+        end
+        println(path2)
+    end
+
+    return path1,path2
+end
+
+
 # Tested: works
 # Only works for euclidean problems
 # Uses the recent edge based formulation from Imdat 2016

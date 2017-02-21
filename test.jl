@@ -17,10 +17,104 @@ function test_write_op_problem()
 end
 
 
-function compare_solvers()
-    
-    
+function test_2path(psize)
+    prob,u = lattice_problem(psize,0.7);
+    return solve_OP_general_2path(ones(prob.num_nodes), -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
+end
 
+function test_1path_vs_2path(pmax_size)
+    figure(10); clf();
+    ylabel("Time (s)");
+    xlabel("Number of nodes");
+    figure(9); clf();
+    xlabel("Number of nodes");
+    ylabel("Expected number of nodes visited at least once by two paths");
+
+
+    kmax=100;
+    iter = 0;
+    s_times = zeros(pmax_size-1, kmax);
+    d_times = zeros(pmax_size-1, kmax);
+    s_rewards = zeros(pmax_size-1, kmax);
+    d_rewards = zeros(pmax_size-1, kmax);
+
+    for p=2:pmax_size
+        println("Trying problems of size $p x $p");
+        for k=1:kmax
+            iter+=1;
+            print("\t Step $k: Single path ... ");
+            try prob,u = lattice_problem(p,0.8)
+                punvisit = zeros(prob.num_nodes);
+                rewards = prob.alphas.*exp(punvisit);
+                a = @timed solve_OP_general(rewards, -log(prob.surv_probs), -log(prob.p_r),1,prob.num_nodes);
+                s_times[p-1,k] = a[2]
+                # Update weights
+                path = a[1];
+                if(size(path,1) > 0)
+                    a_n = 1.0;
+                    for step = 2:size(path,1)
+                        a_n *= prob.surv_probs[path[step-1],path[step]];
+                        punvisit[path[step]]+=log(1-a_n)
+                    end
+
+                    rewards = prob.alphas.*exp(punvisit);
+                    a = @timed solve_OP_general(rewards, -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
+                    s_times[p-1,k] += a[2];
+                    path = a[1];
+                    if(size(path,1) > 0)
+                        a_n = 1.0;
+                        for step = 2:size(path,1) 
+                            a_n *= prob.surv_probs[path[step-1],path[step]];
+                            punvisit[path[step]]+=log(1-a_n)
+                        end
+                        s_rewards[p-1,k] = sum(1-exp(punvisit))
+                    end 
+                else
+                    continue;
+                end                
+                figure(10);
+                scatter(p*p-0.1-u, s_times[p-1,k],color=:blue);
+                figure(9);
+                scatter(iter-.1, s_rewards[p-1,k],color=:blue);
+
+                print(" Double path ...");
+                punvisit = zeros(prob.num_nodes);
+                rewards = prob.alphas.*exp(punvisit);
+                a = @timed solve_OP_general_2path(rewards, -log(prob.surv_probs), -log(prob.p_r), 1, prob.num_nodes);
+                d_times[p-1,k] = a[2]
+                figure(10);
+                scatter(p*p+0.1-u, d_times[p-1,k],color=:red);
+
+
+                # Compute survival probabilities: 
+                paths = a[1]
+                
+                path = paths[1]
+                if(size(path,1) > 0)
+                    a_n = 1.0;
+                    for step = 2:size(path,1)
+                        a_n *= prob.surv_probs[path[step-1],path[step]];
+                        punvisit[path[step]]+=log(1-a_n)
+                    end
+
+                    path = paths[2];
+                    if(size(path,1) > 0)
+                        a_n = 1.0;
+                        for step = 2:size(path,1) 
+                            a_n *= prob.surv_probs[path[step-1],path[step]];
+                            punvisit[path[step]]+=log(1-a_n)
+                        end
+                        d_rewards[p-1,k] = sum(1-exp(punvisit))
+                    end 
+                end
+                figure(9); 
+                scatter(iter+.1, d_rewards[p-1,k],color=:red);
+
+            catch
+                continue;
+            end
+        end
+    end
 end
 
 

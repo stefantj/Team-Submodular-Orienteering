@@ -26,6 +26,7 @@ function test_heterogeneous_teams()
     K = 10;                   # Total number to be chosen
     K_m = [K, K-3, K-5, K-7]; # number of each type allowed
 
+
     # First, create a graph for each robot type
     G = Vector{pr_problem}(M)
     G[1],unreach = lattice_problem(psize, pr[1])
@@ -34,6 +35,7 @@ function test_heterogeneous_teams()
         unreach = change_lattice_pr(G[m], pr[m]);
     end
 
+    num_nodes = G[1].num_nodes
     # Now we solve the greedy survivors problem:
     K_m_left = deepcopy(K_m); # Used to test for independence.
 
@@ -44,9 +46,9 @@ function test_heterogeneous_teams()
 
     for k=1:K
         # For each robot type: 
-        rewards = prob.alphas.*exp(unvisited_prob);
         best_val = -1;
         for m=1:M
+            rewards = (G[m].alphas).*exp(unvisit_prob);
             if(K_m_left[m] > 0)
                 path_m = solve_OP(rewards, G[m], -log(G[m].p_r), 1, G[m].num_nodes)
                 # Compute the reward:
@@ -63,7 +65,7 @@ function test_heterogeneous_teams()
             end
         end
         alive_prob = 1.0;
-        for i=2:size(team[k].path)
+        for i=2:size(team[k].path,1)
             alive_prob *= G[team[k].m].surv_probs[team[k].path[i-1], team[k].path[i]];
             unvisit_prob[team[k].path[i]] += log(1-alive_prob)
         end

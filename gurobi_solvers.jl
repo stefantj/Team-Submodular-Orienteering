@@ -72,38 +72,38 @@ function solve_OP_general_2path(values, distances, B,  n_s, n_t)
     model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500));
 
     # Indicator variables
-    @defVar(model, x1[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
-    @defVar(model, x2[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
-    @defVar(model, v1[1:N], Bin) # Nx1 binary variables - v1[i] == 1 means path 1 visits node i
-    @defVar(model, v2[1:N], Bin) # Nx1 binary variables - v1[i] == 1 means path 1 visits node i
+    @variable(model, x1[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
+    @variable(model, x2[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
+    @variable(model, v1[1:N], Bin) # Nx1 binary variables - v1[i] == 1 means path 1 visits node i
+    @variable(model, v2[1:N], Bin) # Nx1 binary variables - v1[i] == 1 means path 1 visits node i
 
-    @defVar(model, 2 <= u1[without_start] <= N, Int) # binary variable related to subtours
-    @defVar(model, 2 <= u2[without_start] <= N, Int) # binary variable related to subtours
+    @variable(model, 2 <= u1[without_start] <= N, Int) # binary variable related to subtours
+    @variable(model, 2 <= u2[without_start] <= N, Int) # binary variable related to subtours
     # sum reward of visited nodes:
-    @setObjective(model, Max, sum{ values[i]*(v1[i] +v2[i] - v1[i]*v2[i]), i=without_stop})
+    @setObjective(model, Max, sum( values[i]*(v1[i] +v2[i] - v1[i]*v2[i]), i=without_stop))
     # limit one child per parent
-    @addConstraint(model, sum{x1[n_s,j], j=without_start} == 1)
-    @addConstraint(model, sum{x1[i,n_t], i=without_stop} == 1)
+    @addConstraint(model, sum(x1[n_s,j], j=without_start) == 1)
+    @addConstraint(model, sum(x1[i,n_t], i=without_stop) == 1)
     # path constraints/no cycles
-    @addConstraint(model, connectivity1[k=without_both], sum{x1[i,k], i=1:N} == sum{x1[k,j], j=1:N})
-    @addConstraint(model, once1[k=1:N], sum{x1[k,j], j=1:N} <= 1)
-    @addConstraint(model, sum{ sum{distances[i,j]*x1[i,j], j=1:N}, i=1:N } <= B)
+    @addConstraint(model, connectivity1[k=without_both], sum(x1[i,k], i=1:N) == sum(x1[k,j], j=1:N))
+    @addConstraint(model, once1[k=1:N], sum(x1[k,j], j=1:N) <= 1)
+    @addConstraint(model, sum( sum{distances[i,j]*x1[i,j], j=1:N}, i=1:N ) <= B)
     @addConstraint(model, nosubtour1[i=without_start,j=without_start], u1[i]-u1[j]+1 <= (N-1)*(1-x1[i,j]))
     # limit one child per parent
-    @addConstraint(model, sum{x2[n_s,j], j=without_start} == 1)
-    @addConstraint(model, sum{x2[i,n_t], i=without_stop} == 1)
+    @addConstraint(model, sum(x2[n_s,j], j=without_start) == 1)
+    @addConstraint(model, sum(x2[i,n_t], i=without_stop) == 1)
     # path constraints/no cycles
-    @addConstraint(model, connectivity2[k=without_both], sum{x2[i,k], i=1:N} == sum{x2[k,j], j=1:N})
-    @addConstraint(model, once2[k=1:N], sum{x2[k,j], j=1:N} <= 1)
-    @addConstraint(model, sum{ sum{distances[i,j]*x2[i,j], j=1:N}, i=1:N } <= B)
+    @addConstraint(model, connectivity2[k=without_both], sum(x2[i,k], i=1:N) == sum{x2[k,j], j=1:N})
+    @addConstraint(model, once2[k=1:N], sum(x2[k,j], j=1:N) <= 1)
+    @addConstraint(model, sum( sum{distances[i,j]*x2[i,j], j=1:N}, i=1:N ) <= B)
     @addConstraint(model, nosubtour2[i=without_start,j=without_start], u2[i]-u2[j]+1 <= (N-1)*(1-x2[i,j]))
 
-    @addConstraint(model, visits1[i=without_stop], v1[i] == sum{x1[i,j], j = 1:N});
-    @addConstraint(model, visits2[i=without_stop], v2[i] == sum{x2[i,j], j = 1:N});
+    @addConstraint(model, visits1[i=without_stop], v1[i] == sum(x1[i,j], j = 1:N));
+    @addConstraint(model, visits2[i=without_stop], v2[i] == sum(x2[i,j], j = 1:N));
 
     if(n_s != n_t)
-        @addConstraint(model, sum{x1[n_t,i],i=1:N}==0)
-        @addConstraint(model, sum{x2[n_t,i],i=1:N}==0)
+        @addConstraint(model, sum(x1[n_t,i],i=1:N)==0)
+        @addConstraint(model, sum(x2[n_t,i],i=1:N)==0)
     end
 
     path1 = [];
@@ -169,25 +169,25 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
     model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500));
 
 # Variables
-    @defVar(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
-    @defVar(model, y[1:N,1:N])      # NxN real variables for flow
+    @variable(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
+    @variable(model, y[1:N,1:N])      # NxN real variables for flow
 
 # Objective:
     # sum reward of visited nodes: eq (1)
 #    @setObjective(model, Max, sum{ sum{values[i]*x[i,j], j=1:N}, i=1:N})
-    @setObjective(model, Max, sum{ sum{values[i]*x[i,j], j=without_start}, i=without_stop})
+    @setObjective(model, Max, sum( sum(values[i]*x[i,j], j=without_start), i=without_stop))
 
 # Constraints:
     # Initial node constraint: eq (2)
-    @addConstraint(model, sum{x[n_s,j], j=without_start} == 1)
+    @addConstraint(model, sum(x[n_s,j], j=without_start) == 1)
     # Final node constraint: eq (3)
-    @addConstraint(model, sum{x[i,n_t], i=without_stop} == 1)
+    @addConstraint(model, sum(x[i,n_t], i=without_stop) == 1)
     # Degree constraints (no repeated visits): eq (4), (5)
-    @addConstraint(model, once[k=1:N], sum{x[k,j], j=1:N} <= 1)
+    @addConstraint(model, once[k=1:N], sum(x[k,j], j=1:N) <= 1)
     # Conservation of flow constraint: eq (6)
-    @addConstraint(model, connectivity[k=without_both], sum{x[i,k], i=1:N} == sum{x[k,j], j=1:N})
+    @addConstraint(model, connectivity[k=without_both], sum(x[i,k], i=1:N) == sum(x[k,j], j=1:N))
     # Budget constraint: eq (7) 
-    @addConstraint(model, sum{ sum{distances[i,j]*x[i,j], j=1:N}, i=1:N } <= B)
+    @addConstraint(model, sum( sum(distances[i,j]*x[i,j], j=1:N), i=1:N ) <= B)
 
 # Subtour constraints: Edge based:
     # Initializing constraint: y[1,:] = x[1,:]   eq (14)
@@ -197,7 +197,7 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
     # Initializing constraint: Positive flows  eq(16)
     @addConstraint(model, pos_flows[i=1:N,j=1:N], y[i,j] >= 0);
     # Subtour constraint:
-    @addConstraint(model, nosubtour[i=without_both], sum{y[i,j], j=without_start} - sum{y[j,i], j=without_stop}- sum{x[j,i], j=without_stop} == 0);
+    @addConstraint(model, nosubtour[i=without_both], sum(y[i,j], j=without_start) - sum(y[j,i], j=without_stop)- sum(x[j,i], j=without_stop) == 0);
 
     path = [];
     status = solve(model)

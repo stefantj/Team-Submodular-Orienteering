@@ -18,6 +18,103 @@ if(FLAG_USE_GUROBI)
             return solve_OP_general(values,-log(prob.surv_probs),B,n_s,n_t);
         end
     end    
+
+
+    function solve_sub_OP(values, prob, B, n_s, n_t, nodes)
+        warn("Method solve_sub_OP untested");
+        # Extract appropriate values:
+        sub_values = values[nodes];
+        sub_costs = -log(prob.surv_probs)[nodes,nodes];
+        sub_start = find(nodes.== n_s);
+        sub_stop  = find(nodes.== n_t);
+
+        entry_node = 0;
+        entry_cost = Inf;
+        entry_path = [];
+        tmp_nogo = zeros(size(prob.edge_probs, 1));
+        exit_node  = 0;
+        exit_cost = Inf;
+        exit_path = [];
+
+        if(isempty(sub_start))
+            # Compute shortest path from node n_s to any node in nodes
+            # This is a stupid implementation, should do something smarter
+            ssp = dijkstra_shortest_paths(prob.G, (prob.edge_probs), n_s);
+            # Now find the best entry point:
+            for n in nodes
+                if(ssp.dists[n] < entry_cost)
+                    entry_node = n;
+                    entry_cost = ssp.dists[n];
+                end 
+            end
+            # Form path:
+            println("entry node $entry_node");
+            entry_path = [entry_node];
+            prev = ssp.parents[entry_node];
+            while(prev != n_s && prev > 0 && prev <= prob.num_nodes) # stupid sanity checks.
+                print("Prepended $prev, next ");
+                prepend!(entry_path, [prev])
+                prev = ssp.parents[prev];
+                println("$prev");
+                # Currently enforces unique edges _only_. 
+                tmp_nogo[prob.edge_inds[entry_path[1],entry_path[2]]] = 10000;
+                tmp_nogo[prob.edge_inds[entry_path[2],entry_path[1]]] = 10000;
+            end
+            prepend!(entry_path,[n_s]);
+            sub_start = find(nodes.==entry_node)[1]
+        else
+            sub_start = sub_start[1];
+        end
+        if(isempty(sub_stop))
+            # Compute shortest path from node n_s to any node in nodes
+            # This is a stupid implementation, should do something smarter
+            ssp = dijkstra_shortest_paths(prob.G, prob.edge_probs+tmp_nogo, n_t);
+            # Now find the best entry point:
+            for n in nodes
+                if(ssp.dists[n] < exit_cost)
+                    exit_node = n;
+                    exit_cost = ssp.dists[n];
+                end 
+            end
+            # Form path:
+            exit_path = [exit_node];
+            next = ssp.parents[exit_node];
+            while(next != n_t && next > 0 && next <= prob.num_nodes) # stupid sanity checks.
+                push!(exit_path, next);
+                next = ssp.parents[next];
+            end
+            push!(exit_path,n_t)
+            sub_stop = find(nodes.==exit_node)[1];
+        else
+            sub_stop = sub_stop[1];
+        end
+
+        sub_path = [];
+        # Solve problem
+        println(size(sub_values))
+        println(size(sub_costs))
+        println(size(B))
+        println(sub_start)
+        println(sub_stop)
+
+
+        
+        if(prob.is_euclidean)
+            sub_path = solve_OP_edges(sub_values, sub_costs, B-entry_cost-exit_cost, sub_start, sub_stop)
+        else
+            sub_path = solve_OP_general(sub_values, sub_costs, B, sub_start-entry_cost-exit_cost, sub_stop)
+        end
+        # Put back into "cardinal" indexing
+        if(!isempty(sub_path))
+            for i=2:size(sub_path,1)-1
+                sub_path[i] = nodes[sub_path[i]];
+            end
+        end
+        println(entry_path)
+        println(sub_path)
+        println(exit_path)
+        return [entry_path; sub_path; exit_path];
+    end
 else
     function solve_OP(values, prob, B, n_s, n_t)
         if(prob.is_euclidean)
@@ -34,6 +131,10 @@ else
             path = greedy_dijkstra(prob, valuable_nodes, values);
             return path;
         end
+    end
+    function solve_sub_OP(values, prob, B, n_s, n_t, nodes)
+        warn("solve_sub_OP not implemented for heuristic methods.\n");
+        return [];
     end
 end
 

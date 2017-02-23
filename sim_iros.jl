@@ -15,6 +15,7 @@ include("PrettyPlots.jl");
 
 type robot
     m::Int64
+    r::Int64
     path::Vector{Int64}
 end
 
@@ -101,7 +102,7 @@ function test_nested_constraints()
     # Have a mxl feasibility grid, indicating which regions we can still add to. 
     # For each robot type, the number of robots of that type indicates what the survival threshold will be.     
 
-    psize = 10                 # Square-root of the number of nodes (sorry about that, legacy code)
+    psize = 12                # Square-root of the number of nodes (sorry about that, legacy code)
     M = 4; L = 4; R = 5;
     K = 10;
     pr = [0.3,0.5,0.7,0.9];   # Survival constraints
@@ -133,7 +134,7 @@ function test_nested_constraints()
     y_min = minimum(G[1].y_points);
     x_max = maximum(G[1].x_points);
     x_min = minimum(G[1].x_points);
-    for n=1:G[1].num_points
+    for n=1:G[1].num_nodes
         # Give it a region:
         if(G[1].x_points[n] > (x_max - x_min)*.6) # West
             if(G[1].y_points[n] > (y_max - y_min)*0.5) #  North
@@ -141,7 +142,7 @@ function test_nested_constraints()
             else # South
                 push!(region[southwest], n)
             end
-        else if(G[1].x_points[n] < (x_max - x_min)*0.4) # East
+        elseif(G[1].x_points[n] < (x_max - x_min)*0.4) # East
             if(G[1].y_points[n] > (y_max - y_min)*0.5) #  North
                 push!(region[northeast], n)
             else # South
@@ -155,9 +156,11 @@ function test_nested_constraints()
     K_mr = zeros(M,R);
     for m=1:M
         for r=1:R
-            K_mr[m,r] = round(Int64, 1.1*size(region[r],1)/G[m].num_points); # Force a more-or-less proprotional allocation
+            K_mr[m,r] = round(Int64, 2.0*K_m[m]*size(region[r],1)/G[m].num_nodes); # Force a more-or-less proprotional allocation
         end
     end
+
+    println("K_mr: $K_mr");
 
     num_nodes = G[1].num_nodes
     # Now we solve the greedy survivors problem:
@@ -173,26 +176,75 @@ function test_nested_constraints()
     ub = Inf*ones(M,R);
 
     for k=1:K
+        println("K: $k");
         best_val = -1;
         best_r = 0;
         for m=1:M
+            println("m: $m");
             if(K_m_left[m] > 0)
                 # For simplicity, have linearly increasing survival constraints
-                p_rm = p_r[m] + ((0.97-p_r[m])/K_m[m])*(K_m_left[m] - K_m[m])
+                #p_rm = pr[m] + ((0.97-pr[m])/K_m[m])*(K_m_left[m] - K_m[m]) # Risk diversity
+                p_rm = pr[m]; # No risk diversity. 
 
                 rewards = value[m]*(G[m].alphas).*exp(unvisit_prob);
                 for r=1:R
+                    println("r: $r");
                     if(K_mr_left[m,r] > 0)
                         if(best_val < ub[m,r]) 
                             t=tic();
                             path_mr = solve_sub_OP(rewards, G[m], -log( p_rm),1, G[m].num_nodes, region[r]); 
-
-## WIP -- next step is to evaluate path, update survival probabilities, and choose the best path. 
-## Very similar to heterogeneous example.
+                            println("Solve time: ", toq());
+                            # Compute the reward:
+                            alive_prob = 1.0;
+                            val = 0;
+                            for i=2:size(path_mr,1)
+                                alive_prob *= G[m].surv_probs[path_mr[i-1],path_mr[i]];         
+                                val += value[m]*alive_prob*exp(unvisit_prob[path_mr[i]]);
+                            end
+                            ub[m,r] = val;
+                            if(best_val == -1 || val >= best_val)
+                                team[k] = robot(m,r, path_mr); 
+                                best_val = val;
+                                best_r = r;
+                            end
                         end
                     end
                 end
             end
         end
+        if(best_val == -1)
+            warn("No valid path found!");
+            return;
+        end
+        # Add path to solution set
+        alive_prob = 1.0;
+        for i=2:size(team[k].path,1)
+            alive_prob *= G[team[k].m].surv_probs[team[k].path[i-1], team[k].path[i]];
+            unvisit_prob[team[k].path[i]] += log(1-alive_prob)
+        end
+        # Update feasibility counters:
+        K_mr_left[team[k].m,best_r] -=1;
+        K_m_left[team[k].m] -= 1;
+        println("Added robot of type $(team[k].m) to sub-graph $best_r");
     end
+
+    # Plot: 
+
+    initialize_plots();
+    seaborn.plotting_context("paper");
+    seaborn.set_style("white");
+    figure(123, figsize=(4,3));
+   
+    # Place points
+    c = get_colors();
+    for r=1:R
+        scatter(G[1].x_points[region[r]], G[1].y_points[region[r]],color=c[r]);
+    end
+
+    for k=1:size(team,1)        
+        PyPlot.plot(G[1].x_points[team[k].path],G[1].y_points[team[k].path], color=c[team[k].m])
+    end
+
+    print(team)
+    return team;
 end

@@ -7,6 +7,7 @@ println("Setting up with Gurobi solvers");
 # Used for solving the modular orienteering problem. Casts as a MIP
 # requires Gurobi
 function solve_OP_general(values, distances, B,  n_s, n_t)
+    println("n_s: $n_s, n_t: $n_t");
     # Formulate problem for Gurobi:
     N = size(values,1);
     without_start = [1:n_s-1; n_s+1:N];
@@ -161,6 +162,7 @@ function solve_OP_general_2path(values, distances, B,  n_s, n_t)
 end
 
 
+# Subtour elimination doesn't seem right...
 # Tested: works
 # Only works for euclidean problems
 # Uses the recent edge based formulation from Imdat 2016
@@ -171,7 +173,7 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
     without_stop = [1:n_t-1; n_t+1:N];
     without_both  = intersect(without_start, without_stop);
 
-    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500,MIPGap=0.01));
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=1,TimeLimit=500,MIPGap=0.01,Method=2));
 
 # Variables
     @variable(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
@@ -206,6 +208,7 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
 
     path = [];
     status = solve(model)
+    write_model(getrawsolver(model), "op_model.mps");
     if status != :Optimal
         if(status==:UserLimit)
             warn("Time limit hit");
@@ -221,6 +224,15 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
         while(curr > 0)
             path = [path; curr]
             curr = findfirst(x_sol[curr,:]);
+            if(size(path,1) > N)
+                println("Bad path! $path")
+                path = [n_s];
+                return path;
+            end
+            if(curr == n_t)
+                path = [path; curr]
+                return path;
+            end
         end
     end
 

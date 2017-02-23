@@ -267,12 +267,12 @@ function euclidean_problem(num_nodes_per_side, p_r,surv_scaling=0.25)
     yvals = zeros(num_nodes);
 
     for i = 1:num_nodes-1
-        p_i = [locations[floor((i-1)/num_nodes_per_side)+1], locations[mod((i-1), num_nodes_per_side)+1]];
+        p_i = [locations[round(Int64, floor((i-1)/num_nodes_per_side)+1)], locations[round(Int64,mod((i-1), num_nodes_per_side)+1)]];
         xvals[i] = p_i[1];
         yvals[i] = p_i[2];
 
         for j=i+1:num_nodes-1
-            p_j = [locations[floor((j-1)/num_nodes_per_side)+1], locations[mod((j-1), num_nodes_per_side)+1]];
+            p_j = [locations[round(Int64, floor((j-1)/num_nodes_per_side)+1)], locations[round(Int64, mod((j-1), num_nodes_per_side)+1)]];
             surv_probs[i,j] = exp(-surv_scaling*norm(p_i-p_j)) # make -log(surv_probs) proportional to distance
         end
     end

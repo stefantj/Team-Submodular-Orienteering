@@ -30,6 +30,14 @@ function initialize_plots()
     Pretty_Plot_Colors = get_colors();
 end
 
+function init_figure(fignum)
+    if(FLAG_USE_SEABORN)
+        seaborn.plotting_context("paper");
+        seaborn.set_style("white");
+    end
+    close(fignum);  figure(fignum, figsize=(3.3,1.9)); clf();
+end
+
 function make_all_plots()
     plot_compare_naive_trial();
     plot_opt_vs_heur();
@@ -356,4 +364,79 @@ function plot_scaling()
     xlabel("Problem size");
     ylabel("Fraction of MIP");
 
+end
+
+
+function plot_rsc_data(filename)
+    data = load(filename);
+
+    init_figure(19);
+    fig=gcf();
+    K = data["K"];
+    bounds = data["bounds"];
+    bounds[1] = 1;
+    constr_satisfied = data["constr_satisfied"];
+    
+    # Load the problem, fix for later versions
+    m_uv, constr_satisfied = check_solutions(filename);
+
+    c = get_colors();
+
+    ax = gca();
+#    c1 =3
+#    PyPlot.plot(1:K, constr_satisfied[1:K], color=c[c1]);
+#    PyPlot.plot(1:K, maximum(constr_satisfied)*(1:K)/K, color=c[c1], linestyle=":");
+#    ylim([0,1]);
+#    ylabel(L"\mathrm{Constraints\ Satisfied}",color=c[c1]);
+#    xlabel(L"\mathrm{Team\ Size}");
+#    legend([L"\mathrm{Constr.\ Satisfied}", L"\mathrm{Lower\ Bound}"],loc="upper left");
+
+#    ylim([0.0,1.1]);
+
+#    c2=1
+#    ax2 = ax[:twinx]();
+#    PyPlot.plot(1:K, 1:K, color=c[c2],linestyle="-.");
+#    PyPlot.plot(1:K, bounds[1:K], color=c[c2]);
+#    ylabel(L"\mathrm{Approximation\ Ratio}");
+#    xlabel(L"\mathrm{Team\ Size}");
+#    legend([L"\mathrm{Naive\ Bound}", L"\mathrm{Bound}"],loc="center right");
+#    ylim([0,45]);
+
+    lbs = ceil(collect(1:K)./bounds[1:K])
+    PyPlot.plot(constr_satisfied[1:K],bounds[1:K], color=c[1]);
+    PyPlot.plot(constr_satisfied[1:K], collect(1:K)./lbs, color=c[3],linestyle="--");
+    legend([L"\mathrm{Theorem\ 2}", L"\mathrm{Rounded\ Guarantee}"],loc="upper left");
+
+    xlabel(L"\mathrm{Constraints\ Satisfied}");
+    ylabel(L"\mathrm{Approximation\ Ratio}");
+
+    xlim([0.2,1.1]);
+    fig[:subplots_adjust](right=0.85)
+    fig[:subplots_adjust](bottom=0.2) 
+end
+
+
+function plot_rsc_baseline()
+    node_num = (4:4:60) + 2;
+    exact1  = [ 4  6   9  11  14  17  20  22  23  25  28  31  34  35  37 ]';
+    approx1 = [ 4  7  10  13  18  21  25  26  28  32  36  41  43  44  48 ]';
+    bound_1p3 = 1.33*exact1;
+    bound_1p2 = 1.25*exact1;
+
+    init_figure(20); 
+    fig = gcf();
+    c = get_colors();
+    c1 = c[3];
+    c2 = c[1];    
+
+
+    PyPlot.plot(node_num, exact1, color=c1,zorder=5,linestyle="-.");
+    PyPlot.plot(node_num, approx1, color=c2,zorder=5);   
+    PyPlot.plot([],[], color=c1,alpha=0.3);
+    PyPlot.fill_between(collect(node_num), vec(exact1), vec(bound_1p3), color=c1, alpha=0.3,zorder=0);
+    xlabel(L"\mathrm{Number\ of\ Nodes}");
+    ylabel(L"\mathrm{Team\ Size}");
+    legend([L"\mathrm{Exact}", L"\texttt{CGreedySurvivors}",L"\mathrm{133\%\ Approx.}"],loc="lower right");
+    fig[:subplots_adjust](bottom=0.2) 
+#    PyPlot.fill_between(collect(node_num), vec(exact1), vec(bound_1p2), color=c1, alpha=0.3,zorder=0);
 end

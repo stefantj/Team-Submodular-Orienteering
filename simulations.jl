@@ -19,16 +19,18 @@ println(" compare_naive: Runs comparison with naive baseline algorithm.");
 println(" perf_vs_pr:    Runs simulation to judge performance versus p_r");
 println(" opt_vs_heur:   Runs comparison with brute-forced optimal paths on hexagon problem");
 
-
 function test_rsc_scaling(psize, pvals, use_piracy_data = false)
     max_num_agents = 100;
 
-    pr = 0.4;
-    if(!use_piracy_data)
-        prob,unreach = lattice_problem(psize, pr);
-    else
-        prob,unreach = piracy_problem(pr);
-    end
+    pr = sqrt(sqrt(0.4));
+#    if(!use_piracy_data)
+#        prob,unreach = lattice_problem(psize, pr);
+#    else
+#        prob,unreach = piracy_problem(pr);
+#    end
+
+    prob,unreach = load_problem("weather_50.jld",pr);
+
 
     if(typeof(pvals) == Float64)
         pvals = [pvals];
@@ -39,6 +41,8 @@ function test_rsc_scaling(psize, pvals, use_piracy_data = false)
     worst_case_bound = zeros(pvals);
     team_size = zeros(pvals);
     naive_bound = zeros(pvals);
+    team_size_approx = zeros(pvals)
+    guarantee_approx = zeros(pvals)
 
     iter = 0;
     for p in pvals
@@ -46,7 +50,7 @@ function test_rsc_scaling(psize, pvals, use_piracy_data = false)
 
         pv = set_visit_constr(prob, p);
 
-        relaxed_bound[iter], opt_bound[iter], worst_case_bound[iter], naive_bound[iter], team_size[iter] = rsc_solve(prob,max_num_agents);
+        relaxed_bound[iter], opt_bound[iter], worst_case_bound[iter], naive_bound[iter], team_size[iter], team_size_approx[iter], guarantee_approx[iter] = rsc_solve(prob,max_num_agents,iter*10);
         if(team_size[iter] == 100)
             iter -=1;
             break;
@@ -60,24 +64,10 @@ function test_rsc_scaling(psize, pvals, use_piracy_data = false)
     naive_bound = naive_bound[1:iter]
     pvals= pvals[1:iter]
 
-    if(FLAG_USE_SEABORN)
-        seaborn.plotting_context("paper");
-        seaborn.set_style("white");
-    end
+   plot_rsc_data("rsc_problem_10.jld");
 
-    close(1);
-    figure(1,figsize=(4,3)); clf();
-    PyPlot.plot(pvals, team_size,color=:black);
-    PyPlot.plot(pvals, (team_size-1)./relaxed_bound,color=:red);
-#    semilogx(pvals, team_size./opt_bound,color=:blue)
-    PyPlot.plot(pvals, team_size./worst_case_bound,color=:green)
-    PyPlot.plot(pvals, naive_bound,color=:orange)
-    PyPlot.plot(pvals, ones(pvals), color=:black,linestyle=":");
-    xlabel("Visit constraint");
-    ylabel("Number of agents");
-    legend(["Actual team size", "Bi-criteria", "worst-case bound", "Naive bound","Trivial bound"],loc="upper left"); 
-    xlim([minimum(pvals),1.0])
-    xticks(round(linspace(minimum(pvals),maximum(pvals),5),2), round(linspace(minimum(pvals),maximum(pvals),5),2))
+
+
     return relaxed_bound, opt_bound, worst_case_bound, naive_bound, team_size
 end
 

@@ -1,10 +1,17 @@
 include("flags.jl");
 include("problems.jl") # Contains problem definitions
+using JLD
 
 # Functions in this file:
 # greedySurvivors(prob, num_agents)       Executes the greedySurvivors algorithm using the solve_OP method and linearization
 # randomSurvivors(prob, num_agents)       Executes the naive algorithm 
 # solve_OP(values,distances,B,n_s,n_t)    Solves the orienteering problem exactly by casting as a MIP. Timelimit 100s
+
+type robot
+    id::Int64
+    path::Vector{Int64}
+    surv_prob::Float64
+end
 
 
 if(FLAG_USE_GUROBI)
@@ -323,17 +330,33 @@ function greedy_solve_heuristic(prob, num_agents)
 end
 
 
-function rsc_solve(prob, max_num_agents)
+function rsc_solve(prob, max_num_agents, fignum=314)
     # Cost-benefit greedy algorithm with uniform costs is the same as the greedy algorithm.
     # Difference between this and the primal problem is the objective function is truncated.
 
-    delta_g_0 = 0;                                  # Amount of constraint satisfied on first iteration
-    delta_g_K = 0;                                  # Amount of constraint satisfied by kth agent
-    delta_g_Km1 = 0;
+
+    if(FLAG_USE_SEABORN)
+        seaborn.plotting_context("paper");
+        seaborn.set_style("white");
+    end
+    close(fignum);  figure(fignum, figsize=(4,3)); clf();
+
+    reachable_nodes = find(prob.alphas.>=0.0);
+
+    delta_g = [];
     K = 0;
     num_nodes = prob.num_nodes;
 
     bounds = zeros(max_num_agents);
+    bounds[1] = 1;
+    constr_satisfied = zeros(max_num_agents);
+
+    team = Vector{robot}();
+
+    approx_solve = 0.68;
+    approx_fact = 1.5
+    approx_bound = Inf;
+    K_approx = 0;
 
     # Log-transformed non-visit probabilities
     unvisited_prob = zeros(num_nodes);
@@ -365,6 +388,7 @@ function rsc_solve(prob, max_num_agents)
         # Form reward vector:
         #         nonzero if unmet constraint    slack left to fill       upper bound on improvement
         rewards = min(max(prob.prob_constr - 1+exp(unvisited_prob),0), prob.alphas.*exp(unvisited_prob))
+        
 #        println("Slack: ", sum(rewards));
         if(sum(rewards) == 0)
             println("Zero slack - breaking.");
@@ -372,7 +396,6 @@ function rsc_solve(prob, max_num_agents)
             break;
         end
         if(agent > 1)
-            delta_g_Km1 = delta_g_K
             s_km1 = s_k;
         end
 
@@ -385,11 +408,12 @@ function rsc_solve(prob, max_num_agents)
         
         # Update survival probabilities
         alive_prob = 1.0;
-        delta_g_K = 0;
+        push!(delta_g, 0);
         for k=2:size(path,1)
             alive_prob*= prob.surv_probs[path[k-1],path[k]];
             # Compute delta_g
-            delta_g_K += unmet_constraints[path[k]]*min(prob.prob_constr[path[k]] - 1+exp(unvisited_prob[path[k]]), alive_prob*exp(unvisited_prob[path[k]]));
+            delta_g[end] += unmet_constraints[path[k]]*min(prob.prob_constr[path[k]] - 1+exp(unvisited_prob[path[k]]), alive_prob*exp(unvisited_prob[path[k]]));
+            
             # Update cumulative unvisit prob
             unvisited_prob[path[k]]+=log(1-alive_prob);
             if(1-exp(unvisited_prob[path[k]]) >= prob.prob_constr[path[k]])
@@ -397,22 +421,48 @@ function rsc_solve(prob, max_num_agents)
             end
         end 
 
+        push!(team, robot(K, path, alive_prob));
         s_k = sum(max(prob.prob_constr-1+exp(unvisited_prob),0));
 
         if(agent == 1)
-            delta_g_0 = delta_g_K
+#            delta_g_0 = delta_g_K
         else
-            bounds[K] = ceil(K*prob.p_r/(1+log(delta_g_0/delta_g_K)))
+            #                L alpha / ( 1 + log( factor ) ) 
+#            bounds[K] = ceil(K*prob.p_r/(1+log(delta_g[1]/delta_g[end])))
+            bounds[K] = (approx_fact/prob.p_r)*(1+log(approx_fact*delta_g[1]/delta_g[end]/prob.p_r))
+            constr_satisfied[K] = sum(delta_g)/(sum(prob.prob_constr[reachable_nodes]));
+            if(constr_satisfied[K] >= approx_solve)
+                K_approx = K;
+            end
+            clf();
+            subplot(1,2,1);
+            PyPlot.plot(bounds[1:K]);
+            PyPlot.plot(1:K, color=:blue, linestyle=":");
+            subplot(1,2,2);
+            PyPlot.plot(constr_satisfied[1:K],color=:red);
+            PyPlot.plot(1./collect(1:K),color=:red, linestyle=":");
+            save("rsc_problem_$fignum.jld", "bounds", bounds, "constr_satisfied", constr_satisfied, "K", K, "delta_g", delta_g, "team", team, "unvisited_prob", unvisited_prob,"prob",prob,"approx_fact",approx_fact);
+
+            plot_rsc_data("rsc_problem_$fignum.jld");
+        end
+
+        if(K_approx != 0)
+            if(K/bounds[K] < approx_bound)
+                approx_bound = K/bounds[K];
+            end
         end
 
         if(maximum(unmet_constraints) == 0)
+            if(K_approx == 0)
+                K_approx = K
+            end
             println("Constraints satisfied!");
             break;
         end
     end
 
-    relaxed_approx = (1+log(delta_g_0/ delta_g_Km1))/prob.p_r
-    approx_fact = (1+log(delta_g_0/delta_g_K))/prob.p_r
+    relaxed_approx = (1+log(delta_g[1]/ delta_g[end-1]))/prob.p_r
+    approx_fact = (1+log(delta_g[1]/delta_g[end]))/prob.p_r
     worst_case_fact = (1 + log(sum(prob.prob_constr)/(prob.p_r*(1- maximum(prob.prob_constr)))))/prob.p_r
     println("Our solution size: \t $K\nOnline bound: \t $(K/approx_fact)\nOffline bound:\t $(K/worst_case_fact)\nSimple bound:\t $naive_bound");
     println("Online ratio:\t $approx_fact\nOffline ratio:\t $worst_case_fact\nSimple ratio: $(K/naive_bound)");
@@ -422,7 +472,10 @@ function rsc_solve(prob, max_num_agents)
     println("Harder problem:\nBound\t $(K/approx_fact)\nSlack: \t$s_k");
 
     println("Bounds: ", bounds);
-    return relaxed_approx, approx_fact, worst_case_fact, naive_bound, K
+
+    println("Approx bound: $approx_bound");
+
+    return relaxed_approx, approx_fact, worst_case_fact, naive_bound, K, K_approx, approx_bound
 end
 
 

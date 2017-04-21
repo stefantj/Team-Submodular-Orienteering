@@ -25,6 +25,50 @@ type pr_problem
 end
 
 
+function load_problem(filename, p_r)
+    # use the given adjacency matrix to add edges
+    d = load(filename);
+    # Do an exponential:
+    surv_probs = sqrt(sqrt(exp(-d["adjmat"]/maximum(d["adjmat"]))))
+
+    num_nodes = size(surv_probs,1);
+    prob_constr = sqrt(sqrt(0.9))*ones(num_nodes);
+
+    # Remove self-loops:
+    for k = 1:num_nodes
+        surv_probs[k,k] = 0.0001;
+    end
+
+    G = simple_graph(num_nodes);
+    G.is_directed = true;
+
+    is_euclidean = false;
+    edge_index = 0;
+    edge_weights = Float64[];
+    edge_indices = round(Int64, zeros(num_nodes, num_nodes)); 
+    for i = 1:num_nodes
+        for j = i:num_nodes
+            if(surv_probs[i,j] > sqrt(p_r))
+                edge_index+=1;
+                add_edge!(G, Edge(edge_index, i, j));
+                edge_indices[i,j] = edge_index;
+                edge_weights = [edge_weights; -log(surv_probs[i,j])];
+                edge_index+=1;
+                add_edge!(G, Edge(edge_index, j, i));
+                edge_weights = [edge_weights; -log(surv_probs[i,j])];
+                edge_indices[j,i] = edge_index;
+            end
+        end
+    end 
+
+    # Feasibility checks:
+    a_path = Vector{Vector{Int64}}(num_nodes);
+    b_path = Vector{Vector{Int64}}(num_nodes);
+    
+    prob = pr_problem(num_nodes, prob_constr, surv_probs, zeros(num_nodes), zeros(num_nodes), a_path, b_path, p_r, G, edge_weights, edge_indices, is_euclidean, zeros(num_nodes),zeros(num_nodes))
+    unreachable = change_lattice_pr(prob, p_r)
+    return prob, unreachable
+end
 
 # Problem constructed using piracy data
 function piracy_problem(p_r)

@@ -4,6 +4,45 @@ include("problems.jl");
 include("PrettyPlots.jl");
 
 
+function check_solutions(filename)
+    # Load the problem
+    pr = sqrt(sqrt(0.4))
+    prob,unreach = load_problem("weather_15.jld",pr);
+    # Find indices of 'unreachable' nodes
+    unreach_inds = find(prob.alphas.==0.0);
+    reach_inds = find(prob.alphas.>0.0);
+    num_nodes = prob.num_nodes;
+
+    # Now load in solution:
+    d = load(filename);
+    team = d["team"]
+    pv = 0.95;
+    # Now run through and plot the max/min visit probs:
+    unvisited_prob = zeros(num_nodes); 
+    unvisited_prob[1] = -Inf;
+
+    max_uv = [];
+    constr_satisfied = [];
+
+    for robot in team
+        path = robot.path;
+        alive_prob = 1.0;
+        for k=2:size(path,1)
+            alive_prob*= prob.surv_probs[path[k-1],path[k]];
+            # Update cumulative unvisit prob
+            unvisited_prob[path[k]]+=log(1-alive_prob);
+        end 
+        push!(max_uv, maximum(exp(unvisited_prob[reach_inds])));
+        c_s = 0;
+        for i in reach_inds
+            c_s +=min(pv, 1-exp(unvisited_prob[i]))
+        end
+        push!(constr_satisfied, c_s/(pv*size(reach_inds,1)));
+    end 
+#    PyPlot.plot(max_uv);
+    return max_uv, constr_satisfied
+end
+
 function test_write_op_problem()
     # Work with a 100 node problem since that's the default:
     prob, unreach, x, y = euclidean_problem(10, 0.15); 

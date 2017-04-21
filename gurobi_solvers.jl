@@ -18,7 +18,7 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
     # Method=0
     # RINS=0
     # Cuts=0
-    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=1,TimeLimit=500,MIPGap=0.01));
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=1,TimeLimit=35500,MIPGap=0.5));
 
     # Indicator variables
     @variable(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
@@ -75,7 +75,7 @@ function solve_OP_general_2path(values, distances, B,  n_s, n_t)
     without_stop = [1:n_t-1; n_t+1:N];
     without_both  = intersect(without_start, without_stop);
 
-    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500));
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=35500));
 
     # Indicator variables
     @variable(model, x1[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
@@ -173,7 +173,7 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
     without_stop = [1:n_t-1; n_t+1:N];
     without_both  = intersect(without_start, without_stop);
 
-    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=1,TimeLimit=500,MIPGap=0.01,Method=2));
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=1,TimeLimit=35500,MIPGap=0.5,Method=2));
 
 # Variables
     @variable(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
@@ -251,7 +251,7 @@ function solve_OP_nodes(values, distances, B, n_s, n_t)
     without_both  = intersect(without_start, without_stop);
 
 
-    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=500));
+    model = Model(solver=Gurobi.GurobiSolver(OutputFlag=0,TimeLimit=35500));
 
 # Variables
     @variable(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i

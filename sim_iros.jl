@@ -15,7 +15,7 @@ include("PrettyPlots.jl");
 
 type robot
     m::Int64
-    r::Int64
+    r::Float64
     path::Vector{Int64}
 end
 
@@ -75,7 +75,7 @@ function test_heterogeneous_teams()
                     println("r = $r");
                     ub[m] = r;
                     if(best_val == -1 || r >= best_val)
-                        team[k] = robot(m, path_m); 
+                        team[k] = robot(m,r, path_m); 
                         best_val = r;
                     end
                 end
@@ -203,7 +203,8 @@ function test_nested_constraints()
                             end
                             ub[m,r] = val;
                             if(best_val == -1 || val >= best_val)
-                                team[k] = robot(m,r, path_mr); 
+                                print(typeof(m), typeof(r), typeof(path_mr))
+                                team[k] = robot(m,r, vec(path_mr)) 
                                 best_val = val;
                                 best_r = r;
                             end

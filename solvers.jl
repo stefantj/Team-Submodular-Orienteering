@@ -7,10 +7,10 @@ using JLD
 # randomSurvivors(prob, num_agents)       Executes the naive algorithm 
 # solve_OP(values,distances,B,n_s,n_t)    Solves the orienteering problem exactly by casting as a MIP. Timelimit 100s
 
-type robot
-    id::Int64
+type _robot
+    m::Int64
+    r::Float64
     path::Vector{Int64}
-    surv_prob::Float64
 end
 
 
@@ -351,7 +351,7 @@ function rsc_solve(prob, max_num_agents, fignum=314)
     bounds[1] = 1;
     constr_satisfied = zeros(max_num_agents);
 
-    team = Vector{robot}();
+    team = Vector{_robot}();
 
     approx_solve = 0.68;
     approx_fact = 1.5
@@ -421,7 +421,7 @@ function rsc_solve(prob, max_num_agents, fignum=314)
             end
         end 
 
-        push!(team, robot(K, path, alive_prob));
+        push!(team, _robot(K,alive_prob,path) );
         s_k = sum(max(prob.prob_constr-1+exp(unvisited_prob),0));
 
         if(agent == 1)

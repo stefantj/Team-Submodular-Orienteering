@@ -1,10 +1,6 @@
 import Base.==
 include("multi_linear.jl")
-
-# todo: implement MTSO_Problem
-# todo: implement MTSO_Problem constructor
-
-
+include("matroids.jl")
 
 # Parameters which define the CGA
 type CGA_Params
@@ -26,12 +22,12 @@ type Path_Descriptor
 end
 
 # todo: finish implementation, write constructor
-type MTSO_Problem
+type MTSO_Problem{Mtype<:Matroid}
 #    prob::TSO_Problem # Goal: clean up implementation of "pr_problem" 
     num_nodes::Int64
     K::Int64
     node_weights::Vector{Float64}
-    M<:Matroid
+    M<:Mtype
 end
 
 # todo: implement .== for path descriptors.
@@ -41,11 +37,11 @@ end
 # if use_samples, it uses the sampling based approach
 # if use_truncation, it computes a truncated 
 function update_weights(prob::MTSO_Problem, y, params::CGA_Params)
-    node_weights = zeros(prob.num_nodes)
+    node_weights = zeros(prob.problem.V)
     # Choose the appropriate method:
     if(!params.use_samples)
 
-        for j=1:prob.num_nodes
+        for j=1:prob.problem.V
             visit_probs = Vector{Float64}(0)
             delta_probs = Vector{Float64}(0)
             comp_probs  = Vector{Float64}(0)
@@ -85,7 +81,7 @@ function update_weights(prob::MTSO_Problem, y, params::CGA_Params)
         # could also implement to infer an appropriate N for desired accuracy?
         N = round(Int64, params.accuracy_params[1])
         for n=1:N
-            unvisit_probs = ones(prob.num_nodes)
+            unvisit_probs = ones(prob.problem.V)
             for (path,weight) in y
                 if(weight > rand())
                     unvisit_probs[path.nodes] *= (1-path.visit_probs)
@@ -95,21 +91,21 @@ function update_weights(prob::MTSO_Problem, y, params::CGA_Params)
         end
     end
 
-    return node_weights.*prob.node_weights
+    return node_weights.*prob.problem.d
 end
 
 # Follows partition rules for appropriate typed matroid
 # Can use cacheing if this takes too long. 
 function partition_feasible_set(prob::MTSO_Problem, X, weights)
-    subprob_list = independent_subgraphs(X, prob.matroid)
+    subprob_list = independent_subgraphs(X, prob.constraint)
     m=0
     for g in subprob_list
         m+=1
         if(g.ps == -1.0)
-            subprob_list[m].ps = prob.ps
+            subprob_list[m].ps = prob.problem.p_s
         end
         if(g.n_t == -1)
-            subprob_list[m].n_t = prob.num_nodes
+            subprob_list[m].n_t = prob.problem.v_t
         end
         if(g.nodes == [])
             subprob_list[m].nodes = prob.nodes
@@ -145,5 +141,6 @@ end
 
 # todo: implement swap_rounding 
 function swap_rounding(y, prob::MTSO_Problem)
+
 
 end

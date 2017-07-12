@@ -1,5 +1,5 @@
 # Contains independence oracles for MTSO
-include("mtso_problem.jl")
+#include("mtso_problem.jl")
 
 
 # Returns subgraphs which are independent of paths in X
@@ -66,17 +66,21 @@ function independent_subgraphs(X, M::MTSO_Problem{Diversity})
         n=zeros(length(M.matroid.regions_limit))
         for path in X
             m=0
+            assigned=false
             for region in M.matroid.regions
                 m+=1
-                if(setdiff(path,region) == 0)
-                    n[m]+=1
-                    break
+                if(isempty(setdiff(path.nodes,region)))
+                    if(!assigned)
+                        n[m]+=1
+                    else
+                        warn("Subgraphs do not partition space!")
+                    end
                 end
             end
         end
         for m=1:length(M.matroid.regions_limit)
             if(n[m] < M.matroid.regions_limit[m])
-                push!(subsets, TSO_Subproblem(M.regions[m],M.tso))
+                push!(subsets, TSO_Subproblem(M.matroid.regions[m],M.tso))
             end
         end
     end
@@ -119,7 +123,7 @@ end
 
 # tests independence
 function isindependent(X, M::Uniform)
-    if(length(X) >= M.rank)
+    if(length(X) > M.rank)
         false
     else
         return true
@@ -127,7 +131,7 @@ function isindependent(X, M::Uniform)
 end
 
 function isindependent(X, M::Coverage)
-    if(length(X) < M.rank)
+    if(length(X) <= M.rank)
         invalid_regions = []
         for path in X
             k=0
@@ -155,7 +159,7 @@ function isindependent(X, M::Launch)
 end
 
 function isindependent(X, M::Heterogeneous)
-    if(length(X) < M.rank)
+    if(length(X) <= M.rank)
         n=zeros(length(M.robot_types_limit))
         for path in X
             n[path.robot_type]+=1
@@ -172,30 +176,41 @@ function isindependent(X, M::Heterogeneous)
 end
 
 function isindependent(X, M::Diversity)
-    if(length(X) < M.rank)
+    if(length(X) <= M.rank && allunique(X))
         n=zeros(length(M.regions_limit))
+        k = 0;
         for path in X
+            k+=1
             m=0
             for region in M.regions
                 m+=1
-                if(setdiff(path,region) == 0)
+                if(isempty(setdiff(path.nodes,region)))
                     n[m]+=1
                     break
                 end
             end
+            if(sum(n) < k)
+                println("Robot $k unassigned")
+                return false
+            end
         end
         for m=1:length(M.regions_limit)
             if(n[m] > M.regions_limit[m])
+                println("Too many robots visit region $m ($(n[m]) > $(M.regions_limit[m]))")
                 return false
             end
         end
         return true
     end
+    println("Unknown error")
+    for path in X
+        println(path.nodes," ", path.copy)
+    end
     return false
 end
 
 function isindependent(X, M::Risk)
-    if(length(X) < M.rank)
+    if(length(X) <= M.rank)
         psvals = []
         for path in X
             push!(psvals, path.visit_probs[end])
@@ -219,4 +234,21 @@ end
 function isindependent(X, M::NestedCardinality)
     Error("Not implemented")
     return false
+end
+
+# Follows partition rules for appropriate typed matroid
+# Can use cacheing if this takes too long. 
+function partition_feasible_set(prob::MTSO_Problem, X)
+    subprob_list = independent_subgraphs(X, prob)
+    m=0
+    for g in subprob_list
+        m+=1
+        if(g.p_s == -1.0)
+            subprob_list[m].p_s = prob.problem.p_s
+        end
+        if(isempty(g.nodes))
+            subprob_list[m].nodes = prob.nodes
+        end
+    end
+    return subprob_list
 end

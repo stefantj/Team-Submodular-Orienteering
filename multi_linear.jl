@@ -1,9 +1,9 @@
 # Code for multilinear extension
 
-using PyCall, PyPlot
-@pyimport seaborn as sns
-using PyPlot
-using Combinatorics
+#using PyCall, PyPlot
+#@pyimport seaborn as sns
+#using PyPlot
+#using Combinatorics
 
 # Lower level function
 function multi_linear_j(mask, p, y)
@@ -29,15 +29,15 @@ end
 # y         Vector of y values. set_size x 1
 # fval      Value of product term so far
 function multi_linear_recursion(num_el::Int64, index::Int64, depth::Int64, p::Vector{Float64}, y::Vector{Float64}, fval::Float64)
-    h_in = 0
-    h_out = 0
-    n_in  = 0
-    n_out = 0
+    h_in = Float64(0)
+    h_out = Float64(0)
+    n_in  = Int64(0)
+    n_out = Int64(0)
 
     # Error checking --- should remove
     if(index > num_el)
        print("Error: Index $index, num_el $num_el")
-       return NaN
+       return NaN,NaN
     end
 
     # If more events can happen, consider: 
@@ -67,7 +67,7 @@ end
 # max_width     (optional) Maximum number of elements to consider
 #               still need to work out error bounds
 #
-function fast_multilinear(p, y, max_depth=6, max_width=10)
+function fast_multilinear(p, y, max_depth=6, max_width=0)
     p_trunc = vec(deepcopy(p)); y_trunc = vec(deepcopy(y)); 
     n = size(p,1)
     if(max_width==0)

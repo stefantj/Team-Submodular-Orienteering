@@ -50,4 +50,3 @@ type NestedCardinality<:Laminar
     robot_types::Vector{Int64}
     robot_types_limit::Vector{Int64}
 end
-

@@ -1,68 +1,62 @@
-import Base.==
 include("multi_linear.jl")
 include("matroids.jl")
+using JLD
 
 # Parameters which define the CGA
 type CGA_Params
-    delta::Float64
-    delta_inv::Int64
+    δ::Float64
+    δ_inv::Int64
     use_truncation::Bool
     use_samples::Bool
     accuracy_params::Vector{Float64}
 end
 
-# This should go in its own file?
-# Describes a path in $\mathcal{X}$. 
-type Path_Descriptor
-    copy::Int8                      # Which `copy' of the path this is
-    robot_type::Int64               # Type of robot
-    nodes::Vector{Int64}            # Node list
-    visit_probs::Vector{Float64}    # Probability each node is visited
-    reward::Float64                 # Incremental gain of path
+type y_entry
+    ρ::Path
+    x::Float64
+    copy::Int64
 end
 
-# todo: finish implementation, write constructor
-type MTSO_Problem{Mtype<:Matroid}
-#    prob::TSO_Problem # Goal: clean up implementation of "pr_problem" 
-    num_nodes::Int64
-    K::Int64
-    node_weights::Vector{Float64}
-    M<:Mtype
-end
-
-# todo: implement .== for path descriptors.
-# todo: test update_weights function
 
 # Function to update the weights using various methods
 # if use_samples, it uses the sampling based approach
 # if use_truncation, it computes a truncated 
-function update_weights(prob::MTSO_Problem, y, params::CGA_Params)
-    node_weights = zeros(prob.problem.V)
+# Should add a way of empirically judging the sparsity
+function update_weights(mtso::MTSO_Problem, y::Vector{y_entry}, params::CGA_Params)
+    node_weights = zeros(mtso.tso.𝓖.V)
+    if(isempty(y))
+        return mtso.tso.𝓖.ζ.*mtso.tso.d
+    end
+
     # Choose the appropriate method:
     if(!params.use_samples)
 
-        for j=1:prob.problem.V
+        for j=1:mtso.tso.𝓖.V
             visit_probs = Vector{Float64}(0)
-            delta_probs = Vector{Float64}(0)
-            comp_probs  = Vector{Float64}(0)
+            δ_probs = Vector{Float64}(0)
 
-            for (path,weight) in y
-                n = find(path.nodes.==j)
-                if(length(n) > 0)
-                    push!(visit_probs, path.visit_probs[n[1]])
-                    push!(delta_probs, weight)
-                else
-                    push!(comp_probs, weight)
+            for entry in y
+                path = entry.ρ
+                weight = entry.x
+
+                n = findfirst(path.nodes.==j)
+                if(n > 0)
+                    push!(visit_probs, path.z_j[n])
+                    push!(δ_probs, weight)
                 end
             end
 
-            n_comp = length(comp_probs)
-            novisit_coeff = fast_multilinear(ones(N_comp), comp_probs, N_comp, N_comp) 
+            # Another optimization is to stop going deep if Pj(0,X) < threshold
+            if(length(visit_probs) == 0 || mtso.tso.d[j] < 1e-9)
+                node_weights[j] = mtso.tso.𝓖.ζ[j]*mtso.tso.d[j]
+                continue
+            end
+
 
             if(params.use_truncation)
-                max_depth = round(Int64, accuracy_params[1])
-                if(length(accuracy_params) > 1)
-                    max_width = round(Int64, accuracy_params[2])
+                max_depth = round(Int64, params.accuracy_params[1])
+                if(length(params.accuracy_params) > 1)
+                    max_width = round(Int64, params.accuracy_params[2])
                 else
                     max_width = length(visit_probs)
                 end
@@ -71,8 +65,8 @@ function update_weights(prob::MTSO_Problem, y, params::CGA_Params)
                 max_width = length(visit_probs)
             end
 
-            visit_coeff = fast_multilinear(visit_probs, delta_probs, max_depth, max_width)
-            node_weights[j] = visit_coeff*novisit_coeff
+            visit_coeff = fast_multilinear(visit_probs, δ_probs, max_depth, max_width)
+            node_weights[j] = visit_coeff + (1-mtso.tso.p_s)^(max_depth+1)
         end
 
 
@@ -81,66 +75,101 @@ function update_weights(prob::MTSO_Problem, y, params::CGA_Params)
         # could also implement to infer an appropriate N for desired accuracy?
         N = round(Int64, params.accuracy_params[1])
         for n=1:N
-            unvisit_probs = ones(prob.problem.V)
+            unvisit_probs = ones(mtso.tso.𝓖.V)
             for (path,weight) in y
                 if(weight > rand())
-                    unvisit_probs[path.nodes] *= (1-path.visit_probs)
+                    unvisit_probs[path.nodes] *= (1-path.z_j)
                 end
             end
             node_weights += unvisit_probs/params.accuracy_params[1]
         end
     end
 
-    return node_weights.*prob.problem.d
+    return node_weights.*mtso.tso.d
 end
 
-# Follows partition rules for appropriate typed matroid
-# Can use cacheing if this takes too long. 
-function partition_feasible_set(prob::MTSO_Problem, X, weights)
-    subprob_list = independent_subgraphs(X, prob.constraint)
-    m=0
-    for g in subprob_list
-        m+=1
-        if(g.ps == -1.0)
-            subprob_list[m].ps = prob.problem.p_s
+# Super naive O(n^2) diff algorithm
+function basediff(base1::Vector{Path}, base2::Vector{Path})
+    if(!allunique(base1))
+        println("Base not unique!")
+    end
+    if(!allunique(base2))
+        println("Base2 not unique!")
+    end
+        
+    diff = Vector{Path}()
+    for ρ1 in base1
+        present=true
+        for ρ2 in base2
+            if(ρ1==ρ2)
+                present=true
+                break
+            end
         end
-        if(g.n_t == -1)
-            subprob_list[m].n_t = prob.problem.v_t
-        end
-        if(g.nodes == [])
-            subprob_list[m].nodes = prob.nodes
+        if(!present)
+            push!(diff, deepcopy(ρ1))
         end
     end
-    return subprob_list
+    return diff
 end
 
-# todo: test get_path_description function
-function get_path_description(X, robot_type,path, prob, rewards)
-    # Find type and copy number
-    copy=1
-    for path in X_hat
-        if(path.robot_type == robot_type && path.nodes.==rho_hat)
-            copy+=1
+function basediff(base1::Vector{Path}, base2::Path)
+    diff = Vector{Path}()
+    removed = false
+    for ρ1 in base1
+        if(ρ1 != base2)
+            push!(diff, deepcopy(ρ1))
         end
     end
-    pvisit = 1.0
-    visit_probs = Vector{Float64}(0)
-
-    n_last = path[1]
-    reward = rewards[1]
-    push!(visit_probs, pvisit)
-    for n=2:length(path)
-        n_curr = path[n]
-        pvisit*= prob.edgeweights[n_last,n_curr]
-        reward += rewards[n_curr]*pvisit
-        push!(visit_probs, pvisit)
-        n_last=n_curr
-    end
-    return Path_Description(copy, robot_type, path, visit_probs, reward)
+    return diff
 end
 
-# todo: implement swap_rounding 
-function swap_rounding(y, prob::MTSO_Problem)
+function merge_bases!(β1, B1, β2, B2, M::Matroid)
 
+    if(length(B1) != length(B2))
+        error("B1 and B2 are not bases (unequal sizes)")
+    end
+    while(true)
+        B1cpy = deepcopy(B1)
+        B2cpy = deepcopy(B2)
 
+        B12 = basediff(B1, B2)
+        B21 = basediff(B2, B1)
+        if(length(B12)==0 && length(B21)==0)
+            return B1
+        end
+
+        augmented = false
+        for ρi in B12
+            if(augmented)
+                break
+            end
+            B12i = baseiff(B12, ρi)
+            for ρj in B21
+
+                if(isindependent(vcat(B12i, ρj), M))
+                    if(rand() <= β1/(β1+β2))
+                        B2 = push!(basediff(B2,ρj), deepcopy(ρi))
+                    else
+                        B1 = push!(basediff(B1,deepcopy(ρi)), deepcopy(ρj))
+                    end
+                    augmented=true
+                    break
+                end
+            end
+        end
+        if(augmented==false)
+            save("merge_loop.jld", "B1",B1,"B2",B2,"β1",β1,"β2",β2)
+            error("Merge bases loop")
+        end
+    end
+    return B1
+end
+
+function swap_rounding(bases, β, mtso::MTSO_Problem)
+    C = bases[1]
+    for k=1:length(bases)-1
+        C = merge_bases!(sum(β[1:k]), C, β[k+1], bases[k+1], mtso.matroid)
+    end
+    return C
 end

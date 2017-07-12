@@ -1,12 +1,29 @@
 # Contains problem types, constructors and test routines.
 # Notation is consistent with the problem descriptions from the papers
 
+import Base.==
+import Base.hash
+import Base.println
 import Graphs
+include("matroids.jl")
 
 type Path
     nodes::Vector{Int64}
     edges::Vector{Int64}
     z_j::Vector{Float64}
+    copy::Int64
+end
+
+function Path(nodes, edges, z_j)
+    return Path(nodes, edges, z_j, 1)
+end
+
+function Path(nodes::Vector{Int64}, edges::Vector{Int64}, z_j::Vector{Float64})
+    return Path(nodes, edges, z_j, 1)
+end
+
+function ==(ρ_1::Path, ρ_2::Path)
+    return (ρ_1.nodes==ρ_2.nodes)&&(ρ_1.copy==ρ_2.copy)
 end
 
 # Graph used for TSO, includes placeholders to cache common computations
@@ -33,6 +50,12 @@ type TSO_Problem
     v_t::Int64              # Terminal node
     d::Vector{Float64}      # Node weights 
     𝓖::TSO_Graph           # Graph which defines the problem
+end
+
+
+
+function TSO_Problem(𝓖::TSO_Graph)
+    error("Not implemented.")
 end
 
 # Used to represent independent subproblems
@@ -62,8 +85,16 @@ function TSO_Subproblem(nodes::Vector{Int64}, tso::TSO_Problem)
     if(length(nodes)==length(tso.𝓖.V))
         return TSO_Subproblem(robot_type, tso)
     end
-    edges = []#vec(tso.𝓖.edge_inds[nodes, nodes])
+    edges = Int64[]
     return TSO_Subproblem(nodes, edges, tso)
+end
+
+function ==(P1::TSO_Subproblem, P2::TSO_Subproblem)
+    return (P1.p_s == P2.p_s)&&(P1.robot_type==P2.robot_type)&& (P1.nodes==P2.nodes) && (P1.edges==P2.edges)
+end
+
+function hash(x::TSO_Subproblem, h::UInt)
+    return hash(x.edges,hash(x.nodes,hash(x.robot_type,hash(x.p_s,h))))
 end
 
 type HTSO_Problem
@@ -71,9 +102,33 @@ type HTSO_Problem
     tso_list::Vector{TSO_Problem}
 end
 
+# MTSO problem, as presented as IROS
+type MTSO_Problem{M_type<:Matroid}
+    tso::TSO_Problem     # TSO Problem
+    matroid::M_type      # Matroid constraint
+end
+
+# For heterogeneous teams
+type MHTSO_Problem{M_type<:Matroid}
+    htso::HTSO_Problem
+    matroid::M_type
+end
+
 type RSC_Problem
     tso::TSO_Problem
     p_v::Vector{Float64}
+end
+
+
+function Path(nodes, G::TSO_Graph)
+    edges = []
+    z_j = [1.0]
+
+    for n=2:length(nodes)
+        push!(z_j, z_j[end]*G.ω[nodes[n-1],nodes[n]])
+        push!(edges,  G.edge_inds[n-1,n])
+    end
+    return Path(nodes, edges, z_j)
 end
 
 function extract_path(ssp, source, dest, G::TSO_Graph; rev=false)
@@ -86,7 +141,12 @@ function extract_path(ssp, source, dest, G::TSO_Graph; rev=false)
     end
     curr = dest
     prev = ssp.parents[curr]
-    ζ = 1
+    if(prev < 1 || prev > G.V)
+        println("No path found!")
+        return Path([], [], []), 0.0
+    end
+
+    ζ = 1.0
 
     while(prev != source)
         if(prev == curr)
@@ -123,6 +183,9 @@ function extract_path(ssp, source, dest, G::TSO_Graph; rev=false)
 end
 
 function set_ps(tso::TSO_Problem, p_s)
+    if(p_s < tso.p_s)
+        println("Node reward values may be lost when decreasing p_s")
+    end
     tso.p_s = p_s
     num_nodes = tso.𝓖.V
     ζ=ones(num_nodes)
@@ -151,6 +214,7 @@ function set_ps(tso::TSO_Problem, p_s)
 
 
         if(β[j]*tso.𝓖.ζ[j] < p_s)
+            tso.d[j] = 0.0
             unreachable+=1
         end
     end
@@ -215,7 +279,7 @@ function lattice_problem(num_nodes_per_side, p_s)
     return tso, unreachable
 end
 
-function euclidean_problem(num_nodes_per_side, p_s, surv_scaling=0.25)
+function euclidean_problem(num_nodes_per_side, p_s, surv_scaling=0.05)
     V = num_nodes_per_side^2 + 1
     ω = 0.0001*ones(V, V)
     ω_o = zeros(V,V)
@@ -238,7 +302,7 @@ function euclidean_problem(num_nodes_per_side, p_s, surv_scaling=0.25)
     for i=1:V-1
         for j=i+1:V-1
             dist = [xpts[i]-xpts[j], ypts[i]-ypts[j]]
-            ω[i,j] = exp(-surv_scaling*norm(dist))
+            ω[i,j] = exp(-surv_scaling*sqrt(norm(dist)))
         end
     end
 
@@ -278,3 +342,84 @@ function euclidean_problem(num_nodes_per_side, p_s, surv_scaling=0.25)
     return tso, unreachable
 end
 
+function partitioned_lattice(num_nodes, p_s)
+    tso,u = euclidean_problem(num_nodes, p_s)
+
+    n_east = find(tso.𝓖.x_pts.>0.5)
+    n_west = find(tso.𝓖.x_pts.<=0.5)
+    n_north = find(tso.𝓖.y_pts.>0.5)
+    n_south = find(tso.𝓖.y_pts.<=0.5)
+
+    regions = [intersect(n_east, n_north),intersect(n_east, n_south),intersect(n_west, n_north),intersect(n_west, n_south)]
+
+    for m=1:4
+
+        
+        regions[m] = unique(vcat(tso.v_s, regions[m], tso.v_t))
+        continue
+
+        R = regions[m]
+        entry_path = []
+        exit_path = []
+        entry_cost = 0
+        exit_cost = 0
+        nogo = zeros(tso.𝓖.ω_vec)
+        if(findfirst(R.==tso.v_s)==0)
+            entry_cost = Inf
+            for node in R
+                path = tso.𝓖.ρ_ζ[node]
+                if(-log(path.z_j[end]) < entry_cost)
+                    entry_cost = -log(path.z_j[end])
+                    entry_path = path.nodes
+                end
+            end
+        end
+
+        for node in entry_path[2:end-1]
+            if(node > 0)
+                e1 = tso.𝓖.edge_inds[node,:]
+                nogo[e1[find(e1.>0)]] = Inf
+                e2 = tso.𝓖.edge_inds[:,node]
+                nogo[e2[find(e2.>0)]] = Inf
+            end
+        end
+
+        if(findfirst(R.==tso.v_t)==0)
+            sspB = Graphs.dijkstra_shortest_paths(tso.𝓖.G, tso.𝓖.ω_vec+nogo, tso.v_t)
+            exit_cost = Inf
+            best_node = 0
+            for n in R
+                if(sspB.dists[n] < exit_cost)
+                    exit_cost = sspB.dists[n]
+                    best_node = n
+                end
+            end
+            ρ,ζ = extract_path(sspB, tso.v_t, best_node,tso.𝓖, rev=true)
+            exit_path = ρ.nodes
+        end
+
+        regions[m] = vcat(regions[m], entry_path[1:end-1], exit_path[2:end])
+        println("Region $m: Entry cost: $entry_cost. Exit cost: $exit_cost. \n Nodes: $(regions[m])")
+    end
+
+    regions_limit = [5,5,5,5]
+    rank = sum(regions_limit)
+    matroid = Diversity(rank, regions, regions_limit)
+
+    return MTSO_Problem(tso, matroid)
+end
+
+function println(tso::TSO_Problem)
+    println("TSO Problem:")
+    println("K: $(tso.K), p_s = $(tso.p_s), v_s = $(tso.v_s), v_t = $(tso.v_t).")
+    println("Node weights between $(minimum(tso.d)) and $(maximum(tso.d)), with variance $(tso.d)")
+    println("Graph has $(tso.𝓖.V) nodes. ζ ∈ [ $(minimum(tso.𝓖.ζ)), $(maximum(tso.𝓖.ζ))]")
+end
+
+
+function println(subprob::TSO_Subproblem)
+    println("TSO Sub-problem for robot type $(subprob.robot_type)")
+    println("Nodes allowed: ", subprob.nodes)
+    println("Edges allowed: ", subprob.edges)
+    println("Survival threshold: ", subprob.p_s)
+end

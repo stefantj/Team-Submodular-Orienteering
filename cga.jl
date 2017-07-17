@@ -144,14 +144,15 @@ function merge_bases!(β1, B1, β2, B2, M::Matroid)
             if(augmented)
                 break
             end
-            B12i = baseiff(B12, ρi)
+            B1mi = basediff(B1, ρi)
             for ρj in B21
+                B2mj = basediff(B2,ρj)
 
-                if(isindependent(vcat(B12i, ρj), M))
+                if(isindependent(vcat(B1mi, ρj), M) && isindependent(vcat(B2mj,ρi),M))
                     if(rand() <= β1/(β1+β2))
-                        B2 = push!(basediff(B2,ρj), deepcopy(ρi))
+                        B2 = push!(B2mj, deepcopy(ρi))
                     else
-                        B1 = push!(basediff(B1,deepcopy(ρi)), deepcopy(ρj))
+                        B1 = push!(B1mi, deepcopy(ρj))
                     end
                     augmented=true
                     break

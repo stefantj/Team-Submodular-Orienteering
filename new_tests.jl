@@ -28,7 +28,7 @@ G_bases = Vector{Vector{Path}}()
 CG1_bases = Vector{Vector{Vector{Path}}}()
 CG2_bases = Vector{Vector{Vector{Path}}}()
 
-for k=K:-1:1
+for k=1:K
     mtso.tso.K = k
     tic()
     X,obj,ub = Mgreedy_survivors(mtso)
@@ -109,6 +109,6 @@ for k=K:-1:1
     push!(CG1_bases, push!(B1,XCG1))
     push!(CG2_bases, push!(B2,XCG2))
 
-    save("new_tests.jld", "k",K,"mg_vals", mg_vals, "cg1_vals", cg1_vals, "cg2_vals", cg2_vals, "mg_time", mg_time, "cg1_time", cg1_time, "cg2_time", cg2_time, "mg_ratio", mg_ratio, "cg1_ratio", cg1_ratio, "cg2_ratio", cg2_ratio, "G_bases", G_bases, "CG1_bases", CG1_bases, "CG2_bases", CG2_bases)
+    save("new_tests.jld", "k",K,"mg_vals", mg_vals, "cg1_vals", cg1_vals, "cg2_vals", cg2_vals, "mg_time", mg_time, "cg1_time", cg1_time, "cg2_time", cg2_time, "mg_ratio", mg_ratio, "cg1_ratio", cg1_ratio, "cg2_ratio", cg2_ratio, "G_bases", G_bases, "CG1_bases", CG1_bases, "CG2_bases", CG2_bases, "mtso", mtso,"P1",P1,"P2",P2)
 end
 

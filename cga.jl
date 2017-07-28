@@ -22,10 +22,20 @@ end
 # if use_samples, it uses the sampling based approach
 # if use_truncation, it computes a truncated 
 # Should add a way of empirically judging the sparsity
-function update_weights(mtso::MTSO_Problem, y::Vector{y_entry}, params::CGA_Params)
-    node_weights = zeros(mtso.tso.𝓖.V)
+function update_weights(mtso::MTSO_Problem, y::Vector{y_entry}, params::CGA_Params, B::Vector{Path})
+    node_weights = ones(mtso.tso.𝓖.V)
     if(isempty(y))
         return mtso.tso.𝓖.ζ.*mtso.tso.d
+    end
+
+    certain_visits = ones(mtso.tso.𝓖.V)
+    n_cv = zeros(mtso.tso.𝓖.V)
+
+    for path in B
+        for j=1:length(path.nodes)
+            certain_visits[path.nodes[j]]*=(1-path.z_j[j])
+            n_cv[path.nodes[j]]+=1
+        end
     end
 
     # Choose the appropriate method:
@@ -37,7 +47,11 @@ function update_weights(mtso::MTSO_Problem, y::Vector{y_entry}, params::CGA_Para
 
             for entry in y
                 path = entry.ρ
-                weight = entry.x
+                if(path in B) # This is a silly hack - see if it works then prove why if it does.
+                    continue
+                else
+                    weight = entry.x
+                end
 
                 n = findfirst(path.nodes.==j)
                 if(n > 0)
@@ -47,8 +61,8 @@ function update_weights(mtso::MTSO_Problem, y::Vector{y_entry}, params::CGA_Para
             end
 
             # Another optimization is to stop going deep if Pj(0,X) < threshold
-            if(length(visit_probs) == 0 || mtso.tso.d[j] < 1e-9)
-                node_weights[j] = mtso.tso.𝓖.ζ[j]*mtso.tso.d[j]
+            if((length(visit_probs) == 0 && certain_visits[j]==1.0) || mtso.tso.d[j] < 1e-9)
+                node_weights[j] = 1.0#mtso.tso.𝓖.ζ[j]
                 continue
             end
 
@@ -65,8 +79,10 @@ function update_weights(mtso::MTSO_Problem, y::Vector{y_entry}, params::CGA_Para
                 max_width = length(visit_probs)
             end
 
-            visit_coeff = fast_multilinear(visit_probs, δ_probs, max_depth, max_width)
-            node_weights[j] = visit_coeff + (1-mtso.tso.p_s)^(max_depth+1)
+            if(length(visit_probs)>0)
+                certain_visits[j]*= fast_multilinear(visit_probs, δ_probs, max_depth, max_width)
+            end
+            node_weights[j] = certain_visits[j] + (1-mtso.tso.p_s)^(max_depth+1)
         end
 
 
@@ -99,7 +115,7 @@ function basediff(base1::Vector{Path}, base2::Vector{Path})
         
     diff = Vector{Path}()
     for ρ1 in base1
-        present=true
+        present=false
         for ρ2 in base2
             if(ρ1==ρ2)
                 present=true
@@ -115,7 +131,6 @@ end
 
 function basediff(base1::Vector{Path}, base2::Path)
     diff = Vector{Path}()
-    removed = false
     for ρ1 in base1
         if(ρ1 != base2)
             push!(diff, deepcopy(ρ1))
@@ -125,6 +140,9 @@ function basediff(base1::Vector{Path}, base2::Path)
 end
 
 function merge_bases!(β1, B1, β2, B2, M::Matroid)
+    if(B1==B2)
+        println("Error: Bases the same!")
+    end
 
     if(length(B1) != length(B2))
         error("B1 and B2 are not bases (unequal sizes)")
@@ -168,9 +186,30 @@ function merge_bases!(β1, B1, β2, B2, M::Matroid)
 end
 
 function swap_rounding(bases, β, mtso::MTSO_Problem)
-    C = bases[1]
+    B = Vector{Path}()
+    best_obj = 0
+    C = deepcopy(bases[1])
     for k=1:length(bases)-1
         C = merge_bases!(sum(β[1:k]), C, β[k+1], bases[k+1], mtso.matroid)
+
+        unvisited_prob = zeros(mtso.tso.𝓖.V)
+        unvisited_prob[1] = -Inf
+        objval = 0
+
+        for path in C
+            for n =1:length(path.nodes)
+                unvisited_prob[path.nodes[n]] += log(1-path.z_j[n])
+            end
+        end
+        objval = sum(mtso.tso.d.*(1-exp(unvisited_prob)))
+        if(objval > best_obj)
+            best_obj = objval
+            B = deepcopy(C)
+        end
     end
-    return C
+
+    if(C==bases[1])
+        warn("Swap rounding just returned first element")
+    end
+    return B
 end

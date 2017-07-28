@@ -1,11 +1,12 @@
 #include("new_problems.jl")
 include("new_solvers.jl")
 include("independence_oracles.jl")
+include("multivisit.jl")
 
 include("cga.jl")
 
 
-function greedy_survivors(tso::TSO_Problem)
+function greedy_survivors(tso::TSO_Problem; mv_rewards::Multivisit_reward=Multivisit_reward())
 
     unvisited_prob = zeros(tso.𝓖.V)
     unvisited_prob[1] = -Inf
@@ -17,7 +18,11 @@ function greedy_survivors(tso::TSO_Problem)
 
     for k=1:tso.K
         tic()
-        rewards = tso.𝓖.ζ.*exp(unvisited_prob)
+        if(isempty( mv_rewards.Δ))
+            rewards = tso.𝓖.ζ.*exp(unvisited_prob)
+        else
+            rewards = tso.𝓖.ζ.*mv_rewards.rewards
+        end
         path = solve_OP(rewards, tso)
         times[k] += toq()
 
@@ -26,16 +31,24 @@ function greedy_survivors(tso::TSO_Problem)
             return [NaN],[NaN],[NaN]
         else
             tic()
-            upper_bounds[k] = sum(rewards[path.nodes[1:end-1]])
-            if(k > 1)
-                upper_bounds[k] += upper_bounds[k-1]
+            if(!isempty(mv_rewards.Δ))
+                objective[k] = sum(mv_rewards.rewards[path.nodes].*path.z_j)
+                println("Agent $k gained $(objective[k]) reward");
+                if(k != tso.K)
+                    update_rewards!(path, mv_rewards)
+                end
+            else
+                upper_bounds[k] = sum(rewards[path.nodes[1:end-1]])
+                if(k > 1)
+                    upper_bounds[k] += upper_bounds[k-1]
+                end
+
+                for n=2:length(path.nodes)
+                    unvisited_prob[path.nodes[n]] += log(1-path.z_j[n])
+                end
+                objective[k] = tso.𝓖.V - sum(exp(unvisited_prob[1:tso.𝓖.V]).*tso.d)
             end
 
-            for n=2:length(path.nodes)
-                unvisited_prob[path.nodes[n]] += log(1-path.z_j[n])
-            end
-
-            objective[k] = tso.𝓖.V - sum(exp(unvisited_prob[1:tso.𝓖.V]).*tso.d)
             times[k] += toq()
         end
     end
@@ -81,6 +94,9 @@ end
 
 function Mgreedy_survivors(mtso::MTSO_Problem)
 
+    n_attempted = 0
+    n_solved = 0
+
     unvisited_prob = zeros(mtso.tso.𝓖.V)
     unvisited_prob[1] = -Inf
 
@@ -94,7 +110,8 @@ function Mgreedy_survivors(mtso::MTSO_Problem)
     X = Vector{Path}()
 
     for k = 1:min(mtso.matroid.rank,mtso.tso.K)
-        println("Robot $k:")
+        tic()
+#        println("Robot $k:")
         rewards = mtso.tso.d.*mtso.tso.𝓖.ζ.*exp(unvisited_prob)
 
         if(false)
@@ -109,18 +126,20 @@ function Mgreedy_survivors(mtso::MTSO_Problem)
             m = 0
 
             for prob in sub_probs
+                n_attempted+=1
 
                 m+=1
-                print("Solving problem $m/$M")
+#                print("Solving problem $m/$M")
                 if( prob in keys(Cache))
                     if(best_reward > Cache[prob])
-                        println(" --  Dominated.")
+#                        println(" --  Dominated.")
                         continue
                     end
                 end
-                println()
+#                println()
 
-                println(prob)
+#                println(prob)
+                n_solved+=1
                 nodes = solve_sub_OP(rewards, prob)
                 visit_probability = 1.0
                 path_reward = 0.0
@@ -128,7 +147,7 @@ function Mgreedy_survivors(mtso::MTSO_Problem)
                     path_reward += visit_probability * mtso.tso.d[nodes[n]]*exp(unvisited_prob[nodes[n]])
                     visit_probability *= mtso.tso.𝓖.ω[nodes[n],nodes[n+1]]
                 end
-                println("Path reward $path_reward")
+#                println("Path reward $path_reward")
                 Cache[prob] = path_reward*λ
                 if(path_reward > best_reward)
                     best_reward = path_reward
@@ -157,8 +176,9 @@ function Mgreedy_survivors(mtso::MTSO_Problem)
 
             objective[k] = sum(mtso.tso.d) - sum(exp(unvisited_prob).*mtso.tso.d)
         end
+        times[k]=toq();
     end
-    return X, objective, upper_bounds
+    return X, objective, upper_bounds, n_solved, n_attempted, times
 end
 
 function continuous_greedy(mtso::MTSO_Problem, params::CGA_Params)
@@ -168,16 +188,26 @@ function continuous_greedy(mtso::MTSO_Problem, params::CGA_Params)
     t_partition = 0
     t_solve = 0
     
-    Cache = Dict{TSO_Subproblem,Float64}()
 
     best_objective = 0.0
     best_base = Vector{Path}()
+    best_base_index = 0
 
 
     n_steps = 0
+    Cache = Dict{TSO_Subproblem,Float64}()
 
     for iter=1:params.δ_inv
         X = Vector{Path}()
+        print("I$iter. ")
+        if (false && iter==1)
+            X,o,ub,ns,na,t = Mgreedy_survivors(mtso)
+            for ρ in X
+                ρ.copy = 1
+                push!(y, y_entry(ρ, params.δ, ρ.copy))
+            end
+            n_steps += mtso.tso.K
+        else
 
         for k = 1:min(mtso.tso.K, mtso.matroid.rank)
             # Make sure y_vec works properly:
@@ -193,8 +223,7 @@ function continuous_greedy(mtso::MTSO_Problem, params::CGA_Params)
             end
             n_steps+=1
 
-            println("Iter $iter, Robot $k")
-            rewards = update_weights(mtso, y, params)
+            rewards = update_weights(mtso, y, params, Vector{Path}()) #or, X
 
             prob_list = partition_feasible_set(mtso, X)
             
@@ -220,11 +249,11 @@ function continuous_greedy(mtso::MTSO_Problem, params::CGA_Params)
             for prob in sub_probs
                 m+=1
                 
-                print("Solving problem $(ins_order[m])/$M")
+#                print("Solving problem $(ins_order[m])/$M")
                 if( prob in keys(Cache))
-                    print(" ($(Cache[prob])) ")
+#                    print(" ($(Cache[prob])) ")
                     if(best_reward > Cache[prob])
-                        println(" -- Dominated")
+#                        println(" -- Dominated")
                         continue
                     end
                 end
@@ -236,13 +265,13 @@ function continuous_greedy(mtso::MTSO_Problem, params::CGA_Params)
                     visit_probability *= mtso.tso.𝓖.ω[nodes[n],nodes[n+1]]
                 end
                 Cache[prob] = path_reward*λ  
-                print(" $path_reward")
+#                print(" $path_reward")
                 if(path_reward > best_reward)
                     best_reward = path_reward
                     best_path = nodes
-                    print(" * ")
+#                    print(" * ")
                 end
-                println()
+#                println()
             end
             if(isindependent(X, mtso.matroid))
                 ρ = Path(best_path, mtso.tso.𝓖)
@@ -270,17 +299,19 @@ function continuous_greedy(mtso::MTSO_Problem, params::CGA_Params)
                 error("Path not independent")
             end
         end
+    end
         obj = calc_objective(X, mtso)
         if(obj > best_objective)
             best_objective = obj
             best_base = deepcopy(X)
+            best_base_index = iter
         end
         push!(bases, deepcopy(X))
     end
 
     save("test_bases.jld", "bases", bases, "mtso", mtso, "params", params)
-    X = swap_rounding(deepcopy(bases), params.δ*ones(params.δ_inv), mtso)
-    if(!isindependent(X, mtso.matroid))
+    RB = swap_rounding(deepcopy(bases), params.δ*ones(params.δ_inv), mtso)
+    if(!isindependent(RB, mtso.matroid))
         for base in bases
             if(!isindependent(base, mtso.matroid))
                 println("Base is dependent: $base")
@@ -292,20 +323,20 @@ function continuous_greedy(mtso::MTSO_Problem, params::CGA_Params)
                 
 
     # Want to be sure this is done correctly:
-    F_y = sum(mtso.tso.d) - sum(update_weights(mtso, y, params))
+    F_y = sum(mtso.tso.d) - sum(update_weights(mtso, y, params,Vector{Path}()))
 
-    obj = calc_objective(X, mtso) 
+    obj = calc_objective(RB, mtso) 
     if(obj < F_y)
         warn("Rounding decreased objective $(obj/F_y)")
     else
-        println("Solution has $(length(X)) elements. f(X) = $obj > F(y) = $F_y")
+#        println("Solution has $(length(X)) elements. f(X) = $obj > F(y) = $F_y")
     end
 
-    if(obj > best_objective)
+    if(obj >= best_objective)
         println("Rounded solution is best")
     else
-        println("Other base is best")
+        println("Base $best_base_index is best ($best_objective > $obj)")
     end
-    return X, bases
+    return RB, bases
 end
 

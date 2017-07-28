@@ -4,9 +4,9 @@ using Gurobi
 
 println("Setting up with Gurobi solvers");
 
-SolverMIPGap = 0.1
+SolverMIPGap = 0.25
 λ = 1+SolverMIPGap
-Solver = Gurobi.GurobiSolver(OutputFlag=0, TimeLimit=300, MIPGap=SolverMIPGap)
+Solver = Gurobi.GurobiSolver(OutputFlag=1, TimeLimit=900, MIPGap=SolverMIPGap)
 
 # Used for solving the modular orienteering problem. Casts as a MIP
 # requires Gurobi
@@ -48,7 +48,7 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
     path = [];
     status = solve(model)
     write_model(getrawsolver(model), "op_model.mps");
-    if status != :Optimal
+    if (status != :Optimal)
         if(status==:UserLimit)
             warn("Time limit hit");
         elseif(status==:Infeasible||status==:infeasible)
@@ -56,16 +56,14 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
         else
             warn("Not solved to optimality: \n")
         end
-    else 
-        path = [n_s]
-        x_sol = round(Int64,getvalue(x));
+    end
+    path = [n_s]
+    x_sol = round(Int64,getvalue(x));
 
-        curr = findfirst(x_sol[n_s,:]);
-        while(curr > 0)
-            path = [path; curr]
-            curr = findfirst(x_sol[curr,:]);
-        end
-#            path = [path; curr]
+    curr = findfirst(x_sol[n_s,:]);
+    while(curr > 0)
+        path = [path; curr]
+        curr = findfirst(x_sol[curr,:]);
     end
 
     return path
@@ -166,11 +164,27 @@ function solve_OP_general_2path(values, distances, B,  n_s, n_t)
 end
 
 
-# Subtour elimination doesn't seem right...
 # Tested: works
 # Only works for euclidean problems
 # Uses the recent edge based formulation from Imdat 2016
 function solve_OP_edges(values, distances, B, n_s, n_t)
+    if(values!=values|| distances!=distances || B!=B || n_s!=n_s || n_t!=n_t)
+        warn("NaN coefficients!")
+        nan_v = find(values.!=values)
+        values[nan_v] = 0.0
+        nan_d = find(distances.!=distances)
+        distances[nan_d] = B
+        if(B!=B)
+            println("Can't fix, budget is NaN")
+        end
+        if(n_s!=n_s)
+            println("Can't fix, n_s is NaN")
+        end
+        if(n_t!=n_t)
+            println("Can't fix, n_t is NaN")
+        end
+    end
+
 #    warn("Solving OP assuming euclidean distance");
     N = size(values,1);
     without_start = [1:n_s-1; n_s+1:N];
@@ -214,7 +228,7 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
 
     path = [];
     status = solve(model)
-    write_model(getrawsolver(model), "op_model.mps");
+#    write_model(getrawsolver(model), "op_model.mps");
     if status != :Optimal
         if(status==:UserLimit)
             warn("Time limit hit");
@@ -223,22 +237,21 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
         else
             warn("Not solved to optimality: \n")
         end
-    else 
-        path = [n_s]
-        x_sol = round(Int64, getvalue(x));
-        curr = findfirst(x_sol[n_s,:]);
-        while(curr > 0)
+    end
+    path = [n_s]
+    x_sol = round(Int64, getvalue(x));
+    curr = findfirst(x_sol[n_s,:]);
+    while(curr > 0)
+        path = [path; curr]
+        curr = findfirst(x_sol[curr,:]);
+        if(size(path,1) > N)
+            println("Bad path! $path")
+            path = [n_s];
+            return path;
+        end
+        if(curr == n_t)
             path = [path; curr]
-            curr = findfirst(x_sol[curr,:]);
-            if(size(path,1) > N)
-                println("Bad path! $path")
-                path = [n_s];
-                return path;
-            end
-            if(curr == n_t)
-                path = [path; curr]
-                return path;
-            end
+            return path;
         end
     end
 

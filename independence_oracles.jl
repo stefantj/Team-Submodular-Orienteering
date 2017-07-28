@@ -196,7 +196,7 @@ function isindependent(X, M::Diversity)
         end
         for m=1:length(M.regions_limit)
             if(n[m] > M.regions_limit[m])
-                println("Too many robots visit region $m ($(n[m]) > $(M.regions_limit[m]))")
+#                println("Too many robots visit region $m ($(n[m]) > $(M.regions_limit[m]))")
                 return false
             end
         end

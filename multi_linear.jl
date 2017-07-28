@@ -77,7 +77,7 @@ function fast_multilinear(p, y, max_depth=6, max_width=0)
     F_pre = 1.0
     if( max_width < n)
         inds = sortperm(p_trunc.*y_trunc);
-        F_pre = prod(1-y_trunc[inds[max_width+1:end]]);
+        F_pre = 1.0#prod(y_trunc[inds[max_width+1:end]])#prod(1-y_trunc[inds[max_width+1:end]]);
         p_trunc = p_trunc[inds[1:max_width]];
         y_trunc = y_trunc[inds[1:max_width]];
     end

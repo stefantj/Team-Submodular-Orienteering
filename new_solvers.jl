@@ -26,12 +26,18 @@ if(FLAG_USE_GUROBI)
         else
             nodes = solve_OP_general(node_weights, graph.ω_o, budget, v_s, v_t)
         end
+
+        log_cost = 0
         edges = []
         z_j = [1.0]
         for n=2:size(nodes,1)
-            push!(z_j, z_j[end]*exp(-graph.ω_o[n-1,n]))
+            log_cost += graph.ω_o[nodes[n-1],nodes[n]]
+            push!(z_j, z_j[end]*exp(-graph.ω_o[nodes[n-1],nodes[n]]))
             push!(edges, graph.edge_inds[nodes[n-1],nodes[n]])
         end
+        assert(log_cost <= budget)
+        assert(allunique(nodes))
+        assert(allunique(edges))
 
         return Path(nodes, edges, z_j)
     end

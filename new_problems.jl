@@ -83,6 +83,7 @@ end
 
 function TSO_Subproblem(nodes::Vector{Int64}, tso::TSO_Problem)
     if(length(nodes)==length(tso.𝓖.V))
+        robot_type = 1
         return TSO_Subproblem(robot_type, tso)
     end
     edges = Int64[]
@@ -249,16 +250,14 @@ function lattice_problem(num_nodes_per_side, p_s)
         ω[i,V] = ω[1,i]
         for j=i:V
             ω[j,i] = ω[i,j]
-            if(ω[i,j] > sqrt(p_s))
-                edge_index+=1
-                Graphs.add_edge!(G, Graphs.Edge(edge_index, i,j))
-                edge_indices[i,j] = edge_index
-                push!(ω_vec, -log(ω[i,j]))
-                edge_index+=1
-                Graphs.add_edge!(G, Graphs.Edge(edge_index, j,i))
-                edge_indices[j,i] = edge_index
-                push!(ω_vec, -log(ω[i,j]))
-            end
+            edge_index+=1
+            Graphs.add_edge!(G, Graphs.Edge(edge_index, i,j))
+            edge_indices[i,j] = edge_index
+            push!(ω_vec, -log(ω[i,j]))
+            edge_index+=1
+            Graphs.add_edge!(G, Graphs.Edge(edge_index, j,i))
+            edge_indices[j,i] = edge_index
+            push!(ω_vec, -log(ω[i,j]))
         end
     end
 
@@ -279,7 +278,7 @@ function lattice_problem(num_nodes_per_side, p_s)
     return tso, unreachable
 end
 
-function euclidean_problem(num_nodes_per_side, p_s, surv_scaling=0.05)
+function euclidean_problem(num_nodes_per_side, p_s, surv_scaling=0.05; randomize=false)
     V = num_nodes_per_side^2 + 1
     ω = 0.0001*ones(V, V)
     ω_o = zeros(V,V)
@@ -297,6 +296,11 @@ function euclidean_problem(num_nodes_per_side, p_s, surv_scaling=0.05)
     for i=1:V-1
         xpts[i] = locations[round(Int64, floor((i-1)/num_nodes_per_side)+1)]
         ypts[i] = locations[round(Int64, mod((i-1),num_nodes_per_side)+1)]
+    end
+
+    if(randomize)
+        xpts = rand(V)
+        ypts = rand(V)
     end
 
     for i=1:V-1
@@ -406,9 +410,111 @@ function partitioned_lattice(num_nodes, p_s)
     rank = sum(regions_limit)
     matroid = Diversity(rank, regions, regions_limit)
 
-    return MTSO_Problem(tso, matroid)
+    return MTSO_Problem(tso, matroid),u
 end
 
+using Clustering
+
+function random_partitioned_lattice(num_nodes, p_s, num_regions)
+    tso,u = euclidean_problem(num_nodes, p_s, randomize=true)
+
+    regions = Vector{Vector{Int64}}()
+
+    pts = [tso.𝓖.x_pts'; tso.𝓖.y_pts']
+    clusters = kmeans(pts, num_regions)
+    for r=1:num_regions
+        R = unique(vcat(tso.v_s, find(clusters.assignments.==r),tso.v_t))
+        push!(regions, R)
+    end
+
+#    x_floor = 0
+#    for x_split in linspace(0,1,num_regions+1)
+#        if(x_split==0)
+#            continue
+#        end
+#        y_floor = 0
+#        for y_split in linspace(0,1,num_regions+1)
+#            if(y_split==0)
+#                continue
+#            end
+#            R=Vector{Int64}()
+#            push!(R, tso.v_s)
+#            push!(R, tso.v_t)
+#            for r=1:tso.𝓖.V
+#                in_x = (tso.𝓖.x_pts[r]>x_floor && tso.𝓖.x_pts[r]<=x_split)
+#                in_y = (tso.𝓖.y_pts[r]>y_floor && tso.𝓖.y_pts[r]<=y_split)
+#                if(in_x && in_y)
+#                    push!(R, r)
+#                end
+#            end
+#            push!(regions, R)
+#
+#            y_floor= y_split
+#        end
+#        x_floor=x_split
+#    end
+
+    regions_limit = 5*ones(num_regions)
+    rank=sum(regions_limit)
+    matroid = Diversity(rank, regions, regions_limit)
+    return MTSO_Problem(tso, matroid),u
+end
+
+function load_graph(filename, p_s)
+    d = load(filename);
+    ω = sqrt(sqrt(exp(-d["adjmat"]/maximum(d["adjmat"]))))
+    V = size(surv_probs,1)
+    for k=1:V
+        ω[k,k] = 0.0001;
+    end
+
+    is_euclidean = false
+    xpts = zeros(V)
+    ypts = zeros(V)
+    G = Graphs.simple_graph(V)
+    G.is_directed = true
+    edge_index = 0
+    edge_indices = zeros(Int64, V,V)
+
+    for i=1:V
+        ω[i,V] = ω[1,i]
+        for j=i:V
+            ω[j,i] = ω[i,j]
+            edge_index+=1
+            Graphs.add_edge!(G, Graphs.Edge(edge_index, i,j))
+            edge_indices[i,j] = edge_index
+            push!(ω_vec, -log(ω[i,j]))
+            edge_index+=1
+            Graphs.add_edge!(G, Graphs.Edge(edge_index, j,i))
+            edge_indices[j,i] = edge_index
+            push!(ω_vec, -log(ω[i,j]))
+        end
+    end
+
+    K = 0
+    v_s = 1
+    v_t = V
+    d = ones(V)
+    d[1] = 0
+    d[end] = 0
+
+    ρ_ζ = Vector{Path}(V)
+    ρ_β = Vector{Path}(V)
+    ζ = Vector{Float64}(V)
+
+    𝓖 = TSO_Graph(G, V, ω, -log(ω), ω_vec, ζ, ρ_ζ, ρ_β, edge_indices, is_euclidean, xpts, ypts)
+    tso = TSO_Problem(K, p_s, v_s, v_t, d, 𝓖)
+    unreachable = set_ps(tso, p_s)
+    return tso, unreachable
+end
+
+function storm_graph(p_s)
+    return load_graph("weather_50.jld", p_s)
+end
+
+function piracy_graph()
+
+end
 function println(tso::TSO_Problem)
     println("TSO Problem:")
     println("K: $(tso.K), p_s = $(tso.p_s), v_s = $(tso.v_s), v_t = $(tso.v_t).")

@@ -54,24 +54,29 @@ function update_rewards!(ρ::Path, mv::Multivisit_reward)
 end
 
 function test_mv()
-    tso,u = euclidean_problem(8, 0.8, randomize=true)
-    mv = property_classification(tso.𝓖.V, 6)
+    tso,u = storm_graph(0.9)
+    mv = property_classification(tso.𝓖.V, 25)
     tso.K=25
     println(tso.p_s)
     
     upper_bound = zeros(tso.K)
     for k=1:tso.K
         for j=1:tso.𝓖.V
-            if(k <= length(mv.Δ[j]))
-                upper_bound[k] += sum(mv.Δ[j][1:k])
-            else
-                upper_bound[k] = upper_bound[k-1]
-                break
+            p = tso.𝓖.ζ[j]
+            p_comp = (1-p)^k
+            for kk=1:min(k, length(mv.Δ[j]-1))
+                pvisit = binomial(k,kk) * (p^(kk))*(1-p)^(k-kk) 
+                upper_bound[k] += pvisit*sum(mv.Δ[j][1:kk])
+                p_comp += pvisit
+            end
+            if(k >= length(mv.Δ[j]))
+                upper_bound[k] += (1-p_comp)*sum(mv.Δ[j])
             end
         end
     end
 
     obj,ub,t = greedy_survivors(tso; mv_rewards=mv)
+    save("mv_storm_data.jld", "tso", tso, "upper_bound", upper_bound, "obj", obj, "ub", ub, "t", t)
 
     figure(1); clf()
 

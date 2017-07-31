@@ -4,14 +4,15 @@ using Gurobi
 
 println("Setting up with Gurobi solvers");
 
-SolverMIPGap = 0.25
+SolverMIPGap = 1.0
 λ = 1+SolverMIPGap
-Solver = Gurobi.GurobiSolver(OutputFlag=1, TimeLimit=900, MIPGap=SolverMIPGap)
+Solver = Gurobi.GurobiSolver(OutputFlag=1, TimeLimit=1200, MIPGap=SolverMIPGap)
+Solution_gap = 1/λ
+Solver_model = Model(solver=Solver)
 
 # Used for solving the modular orienteering problem. Casts as a MIP
 # requires Gurobi
 function solve_OP_general(values, distances, B,  n_s, n_t)
-    println("n_s: $n_s, n_t: $n_t");
     # Formulate problem for Gurobi:
     N = size(values,1);
     without_start = [1:n_s-1; n_s+1:N];
@@ -22,7 +23,7 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
     # Method=0
     # RINS=0
     # Cuts=0
-    model = Model(solver=Solver)#Gurobi.GurobiSolver(OutputFlag=1,TimeLimit=35500,MIPGap=0.5));
+    model = Model(solver=Solver)
 
     # Indicator variables
     @variable(model, x[1:N,1:N], Bin) # NxN binary variables - x[i,j] == 1 means j is visited just after i
@@ -45,6 +46,18 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
         @addConstraint(model, sum(x[n_t,i] for i=1:N)==0)
     end
 
+    # See if this helps?
+    cnt = 0
+    for i=1:N
+        for j=1:N
+            if(distances[i,j] > B)
+                @addConstraint(model, x[i,j] == 0)
+                cnt+=1
+            end
+        end
+    end
+    println("Set $cnt edges to zero")
+
     path = [];
     status = solve(model)
     write_model(getrawsolver(model), "op_model.mps");
@@ -66,6 +79,8 @@ function solve_OP_general(values, distances, B,  n_s, n_t)
         curr = findfirst(x_sol[curr,:]);
     end
 
+#    Solution_gap = model.MIPGap
+    Solver_model = model
     return path
 end
 
@@ -255,6 +270,8 @@ function solve_OP_edges(values, distances, B, n_s, n_t)
         end
     end
 
+#    Solution_gap = model.MIPGap
+    Solver_model = model
     return path
 end
 
@@ -341,4 +358,168 @@ function solve_OP_nodes(values, distances, B, n_s, n_t)
 
     return path
 end
+
+
+# findSubtour
+# Given a n-by-n matrix representing solution to the relaxed
+# undirected TSP problem, find a set of nodes belonging to a subtour
+# Input:
+#  n        Number of cities
+#  sol      n-by-n 0-1 symmetric matrix representing solution
+# Outputs:
+#  subtour  n length vector of booleans, true iff in a particular subtour
+#  subtour_length   Number of cities in subtour (if n, no subtour found)
+
+# Find subtours
+# Given n x n matrix representing a solution to the OP, find all subtours
+# returns boolean  
+function findSubtour(n, sol, n_s)
+    # Initialize to no subtour
+    subtour = fill(false,n)
+    # Always start looking at city n_s
+    cur_city = n_s
+    subtour[cur_city] = true
+    subtour_length = 1 
+    visited_cities = find(sum(x, 1).>0)
+    while true
+        # Find next node that we haven't yet visited
+        found_city = false
+        for j in visited_cities # For orienteering, we just care about when a city has been visited.
+            if !subtour[j] # not already added to the subtour
+                if sol[cur_city, j] >= 1 - 1e-6
+                    # Arc to unvisited city, follow it
+                    cur_city = j
+                    subtour[j] = true
+                    found_city = true
+                    subtour_length += 1
+                    break  # Move on to next city
+                end
+            end
+        end
+        if !found_city
+            # We are done
+            break
+        end
+    end
+    return subtour, subtour_length
+end
+
+function solve_OP_lazy(values, distances, B, n_s, n_t)
+    N = size(values,1)
+    without_start = [1:n_s-1; n_s+1:N];
+    without_stop = [1:n_t-1; n_t+1:N];
+    without_both  = intersect(without_start, without_stop);
+    model = Model(solver=Solver)
+
+    # Re-think everything in terms of edges.
+#    edge_inds = find(distances.<= B)
+#    num_edges = length(edge_inds)
+    # set edge values to sink node value
+#    edge_value = values[ind2sub(size(distances), edge_inds)[2]]
+
+    # Binary variables indicating edges taken
+    @variable(model, x[1:N,1:N], Bin)
+    # (?) Variables for tracking subtours
+    @variable(model, 2 <= u[without_start] <= N, Int)
+
+    # Rewards
+    @setObjective(model, Max, sum( sum(values[i]*x[i,j] for j=without_start) for i=without_stop))
+    
+    # limit one child per parent
+    @addConstraint(model, sum(x[n_s,j] for j=without_start) == 1)
+    @addConstraint(model, sum(x[i,n_t] for i=without_stop) == 1)
+
+    # path constraints/no cycles
+    @addConstraint(model, connectivity[k=without_both], sum(x[i,k] for i=1:N) == sum(x[k,j] for j=1:N))
+    @addConstraint(model, once[k=1:N], sum(x[k,j] for j=1:N) <= 1)
+    @addConstraint(model, sum( sum(distances[i,j]*x[i,j] for j=1:N) for i=1:N ) <= B)
+
+	# Use lazy subtour elimination constraints (code based on 
+	# https://github.com/JuliaOpt/JuMP.jl/blob/master/examples/tsp.jl
+	function subtour(cb)
+		# Find any set of cities in a subtour
+		subtour, subtour_length = findSubtour(N, getvalue(x))
+
+		if subtour_length == N
+			# This "subtour" is actually all cities, so we are done
+			return
+		end
+		
+		# Subtour found - add lazy constraint
+		# We will build it up piece-by-piece (variable-by-variable)
+		arcs_from_subtour = AffExpr()
+		
+		for i = 1:N
+			if !subtour[i]
+				# If this city isn't in subtour, skip it
+				continue
+			end
+			# Want to include all arcs from this city, which is in
+			# the subtour, to all cities not in the subtour
+			for j = 1:N
+				if i == j
+					# Self-arc
+					continue
+				elseif subtour[j]
+					# Both ends in same subtour
+					continue
+				else
+					# j isn't in subtour
+					arcs_from_subtour += x[i,j]
+				end
+			end
+		end
+
+		# Add the new subtour elimination constraint we built
+        @lazyconstraint(cb, arcs_from_subtour >= 2)
+	end
+
+    # Solve the problem with our cut generator
+	addlazycallback(model, subtour)
+
+#    @addConstraint(model, nosubtour[i=without_start,j=without_start], u[i]-u[j]+1 <= (N-1)*(1-x[i,j]))
+    if(n_s != n_t)
+        @addConstraint(model, sum(x[n_t,i] for i=1:N)==0)
+    end
+    path = [];
+    status = solve(model)
+    if (status != :Optimal)
+        if(status==:UserLimit)
+            warn("Time limit hit");
+        elseif(status==:Infeasible||status==:infeasible)
+            return [1];    # Stupid path
+        else
+            warn("Not solved to optimality: \n")
+        end
+    end
+    path = [n_s]
+    x_sol = round(Int64,getvalue(x));
+
+    curr = findfirst(x_sol[n_s,:]);
+    while(curr > 0)
+        path = [path; curr]
+        curr = findfirst(x_sol[curr,:]);
+    end
+
+#    Solution_gap = model.MIPGap
+    Solver_model = model
+    return path
+end
+
+function test_lazy()
+	tso,u = storm_graph(0.8)
+	rewards = tso.𝓖.ζ
+    tic()
+    path_lazy = solve_OP_lazy(rewards, tso.𝓖.ω_o, -log(tso.p_s), tso.v_s, tso.v_t)
+    t_lazy = toq()
+
+    tic()
+    path = solve_OP_general(rewards, tso.𝓖.ω_o, -log(tso.p_s), tso.v_s, tso.v_t)
+    t = toq()
+
+
+    println("With lazy: t=$t_lazy, r = $(sum(rewards[path_lazy]))")
+    println("without:   t=$t, r = $(sum(rewards[path]))")
+end
+
 

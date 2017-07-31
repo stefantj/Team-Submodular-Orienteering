@@ -16,12 +16,14 @@ function greedy_survivors(tso::TSO_Problem; mv_rewards::Multivisit_reward=Multiv
 
     times = zeros(tso.K)
 
+    gaps = 0
+
     for k=1:tso.K
         tic()
         if(isempty( mv_rewards.Δ))
-            rewards = tso.𝓖.ζ.*exp(unvisited_prob)
+            rewards = tso.d.*tso.𝓖.ζ.*exp(unvisited_prob)
         else
-            rewards = tso.𝓖.ζ.*mv_rewards.rewards
+            rewards = tso.d.*tso.𝓖.ζ.*mv_rewards.rewards
         end
         path = solve_OP(rewards, tso)
         times[k] += toq()
@@ -38,18 +40,23 @@ function greedy_survivors(tso::TSO_Problem; mv_rewards::Multivisit_reward=Multiv
                     update_rewards!(path, mv_rewards)
                 end
             else
-                upper_bounds[k] = sum(rewards[path.nodes[1:end-1]])
-                if(k > 1)
-                    upper_bounds[k] += upper_bounds[k-1]
-                end
-
                 for n=2:length(path.nodes)
+                    objective[k] += path.z_j[n]*exp(unvisited_prob[n])
                     unvisited_prob[path.nodes[n]] += log(1-path.z_j[n])
                 end
-                objective[k] = tso.𝓖.V - sum(exp(unvisited_prob[1:tso.𝓖.V]).*tso.d)
             end
 
             times[k] += toq()
+            # Compute upper bounds using theorem 1
+            gaps += Solution_gap
+            upper_bounds[k] = sum(objective[1:k])/(1-exp(-tso.p_s*gaps/k))
+            for kk = 1:k
+                ubL = sum(objective[1:k])/(1-exp(-tso.p_s*gaps/kk))
+                if( ubL < upper_bounds[k])
+                   upper_bounds[k] = ubL
+                end
+            end
+            
         end
     end
     return objective, upper_bounds, times

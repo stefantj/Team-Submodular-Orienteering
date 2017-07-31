@@ -150,7 +150,7 @@ function extract_path(ssp, source, dest, G::TSO_Graph; rev=false)
     ζ = 1.0
 
     while(prev != source)
-        if(prev == curr)
+        if(prev in nodes)
             warn("Loop in dijkstra's")
             break
         end
@@ -463,10 +463,12 @@ end
 function load_graph(filename, p_s)
     d = load(filename);
     ω = sqrt(sqrt(exp(-d["adjmat"]/maximum(d["adjmat"]))))
-    V = size(surv_probs,1)
+    V = size(ω,1)
     for k=1:V
         ω[k,k] = 0.0001;
     end
+    ω_o = zeros(V,V)
+    ω_vec = Vector{Float64}()
 
     is_euclidean = false
     xpts = zeros(V)
@@ -509,7 +511,7 @@ function load_graph(filename, p_s)
 end
 
 function storm_graph(p_s)
-    return load_graph("weather_50.jld", p_s)
+    return load_graph("weather_data/weather_15.jld", p_s)
 end
 
 function piracy_graph()

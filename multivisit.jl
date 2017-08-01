@@ -1,4 +1,4 @@
-include("../poisson_binomial/pb.jl")
+include("poisson_binomial/pb.jl")
 using PyPlot
 
 # Used to track multi-visit (homogeneous) rewards
